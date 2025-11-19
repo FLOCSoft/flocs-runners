@@ -389,6 +389,12 @@ def delay_calibration(
             parser=cwl_file, help="Settings for the delay calibration in delay_solve."
         ),
     ] = os.path.join(os.environ["VLBI_DATA_ROOT"], "facetselfcal_config.txt"),
+    phaseup_config: Annotated[
+        str,
+        typer.Option(
+            parser=cwl_file, help="Settings for the solve to determine phasediff scores."
+        ),
+    ] = os.path.join(os.environ["VLBI_DATA_ROOT"], "phaseup_config.txt"),
     ms_suffix: Annotated[
         str, Option(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".MS",
