@@ -389,22 +389,6 @@ def delay_calibration(
             parser=cwl_file, help="Settings for the delay calibration in delay_solve."
         ),
     ] = os.path.join(os.environ["VLBI_DATA_ROOT"], "facetselfcal_config.txt"),
-    selfcal: Annotated[
-        str, typer.Option(parser=cwl_dir, help="Path of external calibration scripts.")
-    ] = None,
-    h5merger: Annotated[
-        str,
-        typer.Option(
-            parser=cwl_dir, help="External LOFAR helper scripts for merging h5 files."
-        ),
-    ] = None,
-    linc: Annotated[
-        str,
-        typer.Option(
-            parser=cwl_dir,
-            help="The installation directory for the LOFAR INitial calibration pipeline.",
-        ),
-    ] = None,
     ms_suffix: Annotated[
         str, Option(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".MS",
