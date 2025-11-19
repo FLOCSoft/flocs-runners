@@ -387,16 +387,16 @@ class LINCJSONConfig:
             )
             if "SINGULARITY_BINDPATH" not in os.environ:
                 os.environ["SINGULARITY_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ["LINC_DATA_ROOT"])}"
-                    + f",{os.path.dirname(os.environ["VLBI_DATA_ROOT"])}"
+                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}"
+                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
                 )
             else:
                 os.environ["SINGULARITY_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ["LINC_DATA_ROOT"])}"
-                    + f",{os.path.dirname(os.environ["VLBI_DATA_ROOT"])}"
+                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}"
+                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
-                    + f",{os.environ["SINGULARITY_BINDPATH"]}"
+                    + f",{os.environ['SINGULARITY_BINDPATH']}"
                 )
         if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH"] = (
