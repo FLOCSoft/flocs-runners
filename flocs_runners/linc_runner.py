@@ -262,7 +262,7 @@ class LINCJSONConfig:
             if self.restarting:
                 cmd += ["--restart"]
             if "TOIL_SLURM_ARGS" in os.environ.keys():
-                cmd += [f"--slurmArgs='{os.environ['TOIL_SLURM_ARGS']}"]
+                cmd += [f"--slurmArgs='{os.environ['TOIL_SLURM_ARGS']}'"]
             if record_stats:
                 cmd += ["--stats"]
             cmd += ["--no-cwl-default-ram"]
@@ -1004,6 +1004,7 @@ def target(
         "offline_workers",
         "restart",
         "record_toil_stats",
+        "outdir",
     ]
     args_for_linc = args.copy()
     if args_for_linc["output_fullres_data"]:
