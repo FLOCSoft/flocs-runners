@@ -718,6 +718,7 @@ def calibrator(
         "container",
         "restart",
         "record_toil_stats",
+        "outdir",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
