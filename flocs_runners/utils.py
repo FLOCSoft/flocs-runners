@@ -180,7 +180,7 @@ def verify_slurm_environment_toil():
         os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "astronrd_linc_latest.sif")
     ):
         raise FileNotFoundError(
-            "Cannot find astornrd_linc_latest.sif in CWL_SINGULARITY_CACHE."
+            "Cannot find astronrd_linc_latest.sif in CWL_SINGULARITY_CACHE."
         )
     if "APPTAINER_PULLDIR" not in os.environ:
         logger.critical(
@@ -191,7 +191,7 @@ def verify_slurm_environment_toil():
         os.path.join(os.environ["APPTAINER_PULLDIR"], "astronrd_linc_latest.sif")
     ):
         raise FileNotFoundError(
-            "Cannot find astornrd_linc_latest.sif in APPTAINER_PULLDIR."
+            "Cannot find astronrd_linc_latest.sif in APPTAINER_PULLDIR."
         )
     if "APPTAINER_CACHEDIR" not in os.environ:
         logger.critical(
@@ -202,7 +202,7 @@ def verify_slurm_environment_toil():
         os.path.join(os.environ["APPTAINER_CACHEDIR"], "astronrd_linc_latest.sif")
     ):
         raise FileNotFoundError(
-            "Cannot find astornrd_linc_latest.sif in APPTAINER_CACHEDIR."
+            "Cannot find astronrd_linc_latest.sif in APPTAINER_CACHEDIR."
         )
     if failed:
         raise RuntimeError("One or more critical environment variables were not set.")
