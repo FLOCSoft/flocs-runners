@@ -145,7 +145,7 @@ def setup_toil_slurm(slurm_params: dict):
     Args:
         slurm_params (dict[str]): dictionary with slurm options. Accepted keys are `account`, `queue` and `time`.
     """
-    if "TOIL_SLURM_ARGS"] not in os.environ.keys():
+    if ["TOIL_SLURM_ARGS"] not in os.environ.keys():
         os.environ["TOIL_SLURM_ARGS"] = "--export=ALL "
     if not os.environ["TOIL_SLURM_ARGS"].endswith(" "):
         os.environ["TOIL_SLURM_ARGS"] = os.environ["TOIL_SLURM_ARGS"] + " "
