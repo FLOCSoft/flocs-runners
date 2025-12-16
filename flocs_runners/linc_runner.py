@@ -166,7 +166,10 @@ class LINCJSONConfig:
             logger.warning("Failed to remove leftover tmpdirs.")
 
         logger.info("Copying results")
-        shutil.move(self.rundir, os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"))
+        shutil.move(
+            self.rundir,
+            os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
+        )
 
     def run_workflow(
         self,
@@ -706,7 +709,7 @@ def calibrator(
         args["mspath"],
         ms_suffix=args["ms_suffix"],
         update_version_file=args["update_version_file"],
-        outdir=outdir
+        outdir=outdir,
     )
     unneeded_keys = [
         "mspath",
@@ -993,10 +996,11 @@ def target(
         ms_suffix=args["ms_suffix"],
         update_version_file=args["update_version_file"],
         prefac_h5parm=cal_solutions,
-        outdir=outdir
+        outdir=outdir,
     )
     unneeded_keys = [
         "mspath",
+        "ms_suffix",
         "update_version_file",
         "config_only",
         "scheduler",
