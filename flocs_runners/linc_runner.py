@@ -84,7 +84,10 @@ class LINCJSONConfig:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
                 final_mslist.append(x)
             self.configdict["msin"] = final_mslist
-        self.obsid = extract_obsid_from_ms(self.configdict["msin"][0]["path"])
+        try:
+            self.obsid = extract_obsid_from_ms(self.configdict["msin"][0]["path"])
+        except IndexError:
+            self.obsid = "unknown"
         self.create_linc_versions_file(update_version_file)
 
     def add_entry(self, key: str, value: object):
