@@ -193,9 +193,10 @@ class VLBIJSONConfig:
         if runner == "cwltool":
             cmd = (
                 "cwltool "
-                + "--parallel "
-                + "--preserve-entire-environment "
-                + "--no-container "
+                + "--parllel "
+                + "--timestamps "
+                + "--disable-pull "
+                + "--singularity "
                 + f"--tmpdir-prefix={os.environ['APPTAINERENV_TMPDIR']} "
                 + f"--outdir={os.environ['APPTAINERENV_RESULTSDIR']} "
                 + f"--log-dir={os.environ['APPTAINERENV_LOGSDIR']} "
