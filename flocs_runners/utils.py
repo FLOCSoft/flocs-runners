@@ -106,7 +106,7 @@ def get_prefactor_freqs(solname: str = "solutions.h5", solset: str = "target") -
     sols = h5parm(solname)
     ss = sols.getSolset(solset)
     st_names = ss.getSoltabNames()
-    ph_sol_name = [xx for xx in st_names if "extract" not in xx][0]
+    ph_sol_name = [xx for xx in st_names if ("extract" not in xx) and ("spinifex" not in xx)][0]
     st = ss.getSoltab(ph_sol_name)
     freqs = st.getAxisValues("freq")
     freqstep = 1953125.0  ## the value for 10 subbands

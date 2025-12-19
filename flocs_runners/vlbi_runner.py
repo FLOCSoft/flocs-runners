@@ -66,7 +66,7 @@ class VLBIJSONConfig:
             self.configdict["msin"] = mslist
         else:
             prefac_freqs = get_prefactor_freqs(
-                solname=prefac_h5parm["path"], solset="calibrator"
+                solname=prefac_h5parm["path"], solset="target"
             )
 
             mslist = []
