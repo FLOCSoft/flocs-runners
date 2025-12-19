@@ -13,6 +13,7 @@ import glob
 import json
 import os
 import sys
+import shutil
 import structlog
 import subprocess
 import tempfile
@@ -161,10 +162,29 @@ class VLBIJSONConfig:
             subprocess.check_output(
                 ["rm", "-r", os.path.join(self.rundir, f"logs_VLBI_{self.mode.value}")]
             )
+
+            tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
+            for td in tempdirs:
+                subprocess.check_output(["rm", "-rf", td])
         except subprocess.CalledProcessError:
             logger.warning("Failed to tar logs.")
-        subprocess.check_output(
-            ["mv", self.rundir, f"LOFAR-VLBI_{self.mode.value}_L{self.obsid}_{date}"]
+
+        try:
+            logger.info("Removing leftover tmpdirs")
+            tempdirs = glob.glob(os.path.join(self.rundir, "tmpdir*"))
+            for td in tempdirs:
+                subprocess.check_output(["rm", "-rf", td])
+
+            tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
+            for td in tempdirs:
+                subprocess.check_output(["rm", "-rf", td])
+        except subprocess.CalledProcessError:
+            logger.warning("Failed to remove leftover tmpdirs.")
+
+        logger.info("Copying results")
+        shutil.move(
+            self.rundir,
+            os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
         )
 
     def run_workflow(

@@ -162,6 +162,10 @@ class LINCJSONConfig:
             tempdirs = glob.glob(os.path.join(self.rundir, "tmpdir*"))
             for td in tempdirs:
                 subprocess.check_output(["rm", "-rf", td])
+
+            tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
+            for td in tempdirs:
+                subprocess.check_output(["rm", "-rf", td])
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
