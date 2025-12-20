@@ -21,7 +21,6 @@ import shutil
 import subprocess
 import tempfile
 from time import gmtime, strftime
-import typer
 from enum import Enum
 from cyclopts import App, Parameter
 from typing import List, Optional, Tuple
@@ -467,7 +466,6 @@ def calibrator(
             help="Regular expression of the statoins that are allowed to be selected as a reference antenna by the pipeline."
         ),
     ] = "CS00.*",
-    # Silly workaround until typer starts supporting defaults for this type of input.
     flag_baselines: Annotated[
         Optional[List[str]],
         Parameter(
