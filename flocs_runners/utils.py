@@ -195,7 +195,12 @@ def verify_slurm_environment_toil():
 
 
 def add_slurm_skeleton(
-    contents: str, time=None, cores=None, job_name=None, queue=None, account=None
+    contents: str,
+    time: str = "",
+    cores: int = 0,
+    job_name: str = "",
+    queue: str = "",
+    account: str = "",
 ):
     sbatch_line = "#SBATCH "
     if time:
