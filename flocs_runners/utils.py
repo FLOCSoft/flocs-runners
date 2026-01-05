@@ -6,7 +6,7 @@ import sys
 from packaging.version import Version
 from pathlib import Path
 from subprocess import CalledProcessError
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import casacore.tables as ct
 import numpy as np
@@ -15,6 +15,8 @@ from spinifex import h5parm_tools
 from spinifex.vis_tools import ms_tools
 import structlog
 from losoto.h5parm import h5parm
+
+from cyclopts import Token
 
 logger = structlog.getLogger()
 
