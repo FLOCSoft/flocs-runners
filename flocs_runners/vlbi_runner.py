@@ -42,6 +42,7 @@ class VLBIJSONConfig:
         ms_suffix: str = ".MS",
         prefac_h5parm={"path": ""},
         update_version_file: bool = False,
+        outdir: str = os.getcwd(),
     ):
         if "VLBI_DATA_ROOT" not in os.environ:
             logger.critical(
@@ -50,6 +51,7 @@ class VLBIJSONConfig:
             sys.exit(-1)
 
         self.configdict = {}
+        self.outdir = outdir
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
@@ -550,6 +552,10 @@ def delay_calibration(
         str,
         Parameter(help="Directory to run in."),
     ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
     slurm_queue: Annotated[
         str,
         Parameter(help="Slurm queue to run jobs on."),
@@ -582,6 +588,7 @@ def delay_calibration(
     config = VLBIJSONConfig(
         args["mspath"],
         ms_suffix=args["ms_suffix"],
+        outdir=outdir,
     )
     unneeded_keys = [
         "mspath",
