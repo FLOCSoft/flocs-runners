@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 from time import gmtime, strftime
 from enum import Enum
-from cyclopts import App, Parameter
+from cyclopts import App, Parameter, Token
 from typing import List, Optional, Tuple
 from typing_extensions import Annotated
 
@@ -494,12 +494,22 @@ def calibrator(
         bool, Parameter(help="Enable or disable baseline-based smoothing.")
     ] = False,
     rfistrategy: Annotated[
-        cwl_file,
+        Optional[dict],
         Parameter(
             help="Path to the RFI flagging strategy to use with AOFlagger.",
+            converter=cwl_file,
         ),
-    ] = os.path.join(
-        os.environ["LINC_DATA_ROOT"], "rfistrategies", "lofar-hba-wideband.lua"
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    os.environ["LINC_DATA_ROOT"],
+                    "rfistrategies",
+                    "lofar-hba-wideband.lua",
+                )
+            )
+        ],
     ),
     max2interpolate: Annotated[
         int,
@@ -540,11 +550,12 @@ def calibrator(
         ),
     ] = -1.0,
     solutions2transfer: Annotated[
-        Optional[cwl_file],
+        Optional[dict],
         Parameter(
             help="Provide own solutions from a reference calibrator observation in the case calibrator source is not trusted.",
+            converter=cwl_file,
         ),
-    ] = "null",
+    ] = None,
     antennas2transfer: Annotated[
         str,
         Parameter(
@@ -603,17 +614,30 @@ def calibrator(
         ),
     ] = 1.0,
     calibrator_path_skymodel: Annotated[
-        Optional[cwl_dir],
+        Optional[dict],
         Parameter(
             help="Directory where calibrator skymodels are located.",
+            converter=cwl_file,
         ),
-    ] = os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"),
+    ] = cwl_file(
+        str, [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"))]
+    ),
     A_Team_skymodel: Annotated[
-        Optional[cwl_file],
+        Optional[dict],
         Parameter(
             help="File path to the A-Team skymodel.",
+            converter=cwl_file,
         ),
-    ] = os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"),
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
+                )
+            )
+        ],
+    ),
     avg_timeresolution: Annotated[
         int,
         Parameter(
@@ -758,7 +782,9 @@ def calibrator(
 @app.command()
 def target(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    cal_solutions: Annotated[cwl_file, Parameter(help="Calibration solutions file.")],
+    cal_solutions: Annotated[
+        dict, Parameter(help="Calibration solutions file.", converter=cwl_file)
+    ],
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".MS",
@@ -778,9 +804,18 @@ def target(
     ] = "[CR]S*&",
     do_smooth: Annotated[Optional[bool], Parameter(help="Enable smoothing.")] = False,
     rfistrategy: Annotated[
-        Optional[cwl_file], Parameter(help="RFI strategy file or name.")
-    ] = os.path.join(
-        f"{os.environ['LINC_DATA_ROOT']}", "rfistrategies", "lofar-hba-wideband.lua"
+        Optional[dict], Parameter(help="RFI strategy file or name.", converter=cwl_file)
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    f"{os.environ['LINC_DATA_ROOT']}",
+                    "rfistrategies",
+                    "lofar-hba-wideband.lua",
+                )
+            )
+        ],
     ),
     min_unflagged_fraction: Annotated[
         Optional[float], Parameter(help="Minimum unflagged fraction.")
@@ -837,13 +872,20 @@ def target(
         Optional[float], Parameter(help="Minimum probability.")
     ] = 0.5,
     A_Team_skymodel: Annotated[
-        Optional[cwl_file],
-        Parameter(
-            help="File path to the A-Team skymodel.",
-        ),
-    ] = os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"),
+        Optional[dict],
+        Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
+                )
+            )
+        ],
+    ),
     target_skymodel: Annotated[
-        Optional[cwl_file], Parameter(help="Target sky model.")
+        Optional[dict], Parameter(help="Target sky model.", converter=cwl_file)
     ] = None,
     use_target: Annotated[
         Optional[bool], Parameter(help="Use target sky model.")
@@ -905,7 +947,7 @@ def target(
         Optional[float], Parameter(help="HBA uv lambda minimum.")
     ] = 200.0,
     selfcal_region: Annotated[
-        Optional[cwl_file], Parameter(help="Selfcal region file.")
+        Optional[dict], Parameter(help="Selfcal region file.", converter=cwl_file)
     ] = None,
     chunkduration: Annotated[Optional[float], Parameter(help="Chunk duration.")] = 0.0,
     wsclean_tmpdir: Annotated[
