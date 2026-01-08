@@ -680,6 +680,18 @@ def calibrator(
     solveralgorithm: Annotated[
         str, Parameter(help="Solver algorithm for DP3 to use.")
     ] = "directioniterative",
+    uvlambdamin: Annotated[
+        Optional[float],
+        Parameter(
+            help="Minimum uv-distance in units of wavelength to be used during all calibration steps."
+        ),
+    ] = None,
+    uvmmax: Annotated[
+        Optional[float],
+        Parameter(
+            help="Maximum uv-distance in metre to be used during all calibration steps."
+        ),
+    ] = None,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
@@ -946,6 +958,12 @@ def target(
     hba_uvlambdamin: Annotated[
         Optional[float], Parameter(help="HBA uv lambda minimum.")
     ] = 200.0,
+    hba_uvmmax: Annotated[
+        Optional[float],
+        Parameter(
+            help="Baselines with a maximum uv-distance in metre when performing phase calibration with HBA."
+        ),
+    ] = 1e15,
     selfcal_region: Annotated[
         Optional[dict], Parameter(help="Selfcal region file.", converter=cwl_file)
     ] = None,
