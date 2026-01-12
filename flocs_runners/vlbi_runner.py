@@ -1002,8 +1002,20 @@ def setup(
     ] = ["VirA_Gaussian", "CygA_Gaussian", "CasA_Gaussian", "TauA_Gaussian"],
     ATeam_skymodel: Annotated[
         Optional[dict],
-        Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
-    ] = os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"),
+        Parameter(
+            help="File path to the A-Team skymodel.",
+            converter=cwl_file,
+        ),
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
+                )
+            )
+        ],
+    ),
     rm_correction: Annotated[
         Optional[Literal["spinifex", "RMextract"]],
         Parameter(
