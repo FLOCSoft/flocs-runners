@@ -619,7 +619,7 @@ def calibrator(
             help="Directory where calibrator skymodels are located.",
             converter=cwl_dir,
         ),
-    ] = cwl_file(
+    ] = cwl_dir(
         str, [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"))]
     ),
     A_Team_skymodel: Annotated[
