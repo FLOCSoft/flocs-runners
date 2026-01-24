@@ -41,6 +41,7 @@ class VLBIJSONConfig:
         mspath: str,
         ms_suffix: str = ".MS",
         prefac_h5parm={"path": ""},
+        ddf_solsdir: dict = {"path": ""},
         update_version_file: bool = False,
         outdir: str = os.getcwd(),
     ):
@@ -58,9 +59,10 @@ class VLBIJSONConfig:
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
 
-        if not prefac_h5parm["path"].endswith("h5") and not prefac_h5parm[
-            "path"
-        ].endswith("h5parm"):
+        if (not prefac_h5parm) or (
+            not prefac_h5parm["path"].endswith("h5")
+            and not prefac_h5parm["path"].endswith("h5parm")
+        ):
             mslist = []
             for ms in files:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
@@ -81,6 +83,25 @@ class VLBIJSONConfig:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
                 final_mslist.append(x)
             self.configdict["msin"] = final_mslist
+        if ddf_solsdir and ddf_solsdir["path"]:
+            soldirs = glob.glob(os.path.join(ddf_solsdir["path"], "L*"))
+            ddf_names_short = []
+            for ms in soldirs:
+                short_name = "_".join(os.path.basename(ms).split("_")[:2])
+                ddf_names_short.append(short_name)
+
+            idx_nosols = set()
+            for idx, ms in enumerate(self.configdict["msin"]):
+                short_name = "_".join(os.path.basename(ms["path"]).split("_")[:2])
+                if short_name not in ddf_names_short:
+                    idx_nosols.add(idx)
+                    logger.info(f"Removing {os.path.basename(ms["path"])} because no ddf-pipeline solutions")
+            self.configdict["msin"] = [
+                ms
+                for i, ms in enumerate(self.configdict["msin"])
+                if i not in idx_nosols
+            ]
+
         try:
             self.obsid = extract_obsid_from_ms(self.configdict["msin"][0]["path"])
         except IndexError:
@@ -636,6 +657,8 @@ def delay_calibration(
     config = VLBIJSONConfig(
         args["mspath"],
         ms_suffix=args["ms_suffix"],
+        prefac_h5parm=args["solset"],
+        ddf_solsdir=args["ddf_solsdir"],
         outdir=outdir,
     )
     unneeded_keys = [
