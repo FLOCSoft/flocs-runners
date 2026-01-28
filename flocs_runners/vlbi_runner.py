@@ -95,7 +95,7 @@ class VLBIJSONConfig:
                 short_name = "_".join(os.path.basename(ms["path"]).split("_")[:2])
                 if short_name not in ddf_names_short:
                     idx_nosols.add(idx)
-                    logger.info(f"Removing {os.path.basename(ms["path"])} because no ddf-pipeline solutions")
+                    logger.info(f"Removing {os.path.basename(ms['path'])} because no ddf-pipeline solutions")
             self.configdict["msin"] = [
                 ms
                 for i, ms in enumerate(self.configdict["msin"])
