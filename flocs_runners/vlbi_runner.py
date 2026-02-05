@@ -217,7 +217,6 @@ class VLBIJSONConfig:
         runner: str = "toil",
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        container: str = "",
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
@@ -639,10 +638,6 @@ def delay_calibration(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "72:00:00",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -673,7 +668,6 @@ def delay_calibration(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
         "restart",
         "record_toil_stats",
     ]
@@ -693,7 +687,6 @@ def delay_calibration(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
         )
@@ -801,10 +794,6 @@ def dd_calibration(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -828,7 +817,6 @@ def dd_calibration(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
         "record_toil_stats",
     ]
     args_for_linc = args.copy()
@@ -847,7 +835,6 @@ def dd_calibration(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
         )
@@ -946,10 +933,6 @@ def split_directions(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -970,7 +953,6 @@ def split_directions(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -988,7 +970,6 @@ def split_directions(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
         )
 
@@ -1094,10 +1075,6 @@ def setup(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1119,7 +1096,6 @@ def setup(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
         "restart",
     ]
     args_for_linc = args.copy()
@@ -1138,7 +1114,6 @@ def setup(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
         )
 
@@ -1201,10 +1176,6 @@ def concatenate_flag(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1225,7 +1196,6 @@ def concatenate_flag(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1243,7 +1213,6 @@ def concatenate_flag(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
         )
 
@@ -1316,10 +1285,6 @@ def phaseup_concat(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1340,7 +1305,6 @@ def phaseup_concat(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
-        "container",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1358,7 +1322,6 @@ def phaseup_concat(
                 "time": args["slurm_time"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
         )
 

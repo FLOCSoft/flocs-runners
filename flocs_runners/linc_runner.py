@@ -180,7 +180,6 @@ class LINCJSONConfig:
         runner: str = "toil",
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        container: str = "",
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
@@ -362,14 +361,14 @@ class LINCJSONConfig:
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl" # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
                     + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
                 )
             else:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl" # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
                     + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
                     + f",{os.environ['APPTAINER_BINDPATH']}"
@@ -730,10 +729,6 @@ def calibrator(
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
     ] = 32,
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     restart: Annotated[
         bool,
         Parameter(help="Restart a Toil workflow from the given rundir."),
@@ -765,7 +760,6 @@ def calibrator(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
-        "container",
         "restart",
         "record_toil_stats",
         "outdir",
@@ -787,7 +781,6 @@ def calibrator(
                 "cores": args["slurm_cores"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
         )
@@ -920,7 +913,8 @@ def target(
         Optional[str], Parameter(help="Concat averaging frequency resolution.")
     ] = "97.64kHz",
     num_SBs_per_group: Annotated[
-        Optional[int], Parameter(name="--num-sbs-per-group", help="Number of SBs per group.")
+        Optional[int],
+        Parameter(name="--num-sbs-per-group", help="Number of SBs per group."),
     ] = None,
     calib_nchan: Annotated[Optional[int], Parameter(help="Calibration channels.")] = 1,
     reference_stationSB: Annotated[
@@ -1021,10 +1015,6 @@ def target(
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
     ] = 32,
-    container: Annotated[
-        str,
-        Parameter(help="Apptainer container to use for cwltool runs."),
-    ] = "",
     offline_workers: Annotated[
         bool,
         Parameter(help="Indicates that the worker nodes do not have internet access."),
@@ -1061,7 +1051,6 @@ def target(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
-        "container",
         "offline_workers",
         "restart",
         "record_toil_stats",
@@ -1109,7 +1098,6 @@ def target(
                 "cores": args["slurm_cores"],
             },
             workdir=args["rundir"],
-            container=args["container"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
         )
