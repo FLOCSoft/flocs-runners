@@ -361,14 +361,14 @@ class LINCJSONConfig:
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
                     + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
                 )
             else:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
                     + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
                     + f",{os.path.dirname(workdir)}"
                     + f",{os.environ['APPTAINER_BINDPATH']}"
