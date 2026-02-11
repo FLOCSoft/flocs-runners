@@ -11,7 +11,7 @@ dependencies = ["cyclopts", "numpy","structlog", "packaging", "python-casacore",
 
 [project.scripts]
 flocs-run = "flocs_runners.flocs_run:main"
-flocs-db = "flocs_database.flocs_db:main"
+flocs-processing = "flocs_database.flocs_processing:main"
 
 [tool.setuptools]
 packages = ["flocs_runners"]

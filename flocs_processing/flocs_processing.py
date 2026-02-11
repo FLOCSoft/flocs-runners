@@ -73,7 +73,7 @@ class STAGING_STATUS(Enum):
 
 
 @app.command()
-def create(
+def create_database(
     dbname: Annotated[
         str, Parameter(help="Sqlite3 database from which processing will be done.")
     ],
@@ -87,6 +87,8 @@ def create(
 
     if "linc" in pipelines:
         dbstr += ", sas_id_calibrator1 text default NULL, sas_id_calibrator2 text default NULL, sas_id_calibrator_final text default NULL, sas_id_target text primary key default NULL, status_calibrator1 smallint default 0, status_calibrator2 smallint default 0, status_target smallint default 0"
+    if "vlbi-delay" in pipelines:
+        dbstr += ", status_delay smallint default 0"
     dbstr += ");"
 
     cmd = ["sqlite3", dbname, dbstr]
@@ -98,7 +100,7 @@ def create(
 
 
 @app.command()
-def process_database(
+def process_from_database(
     dbname: Annotated[
         str, Parameter(help="Sqlite3 database from which processing will be done.")
     ],
