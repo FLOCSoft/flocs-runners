@@ -1010,7 +1010,7 @@ def polarization_imaging(
     image_size: Annotated[
         Tuple[int,int],
         Parameter(help="Image size in number of pixels [x,y]"),
-    ] = [2000,2000],
+    ] = (2000,2000),
     num_channels: Annotated[
         Optional[int],
         Parameter(help="The number of channels to image for each Stokes"),
