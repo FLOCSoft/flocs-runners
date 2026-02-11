@@ -44,7 +44,7 @@ class VLBIJSONConfig:
         self,
         mspath: str,
         ms_suffix: str = ".MS",
-        msin: str = None,
+        msin: str,
         prefac_h5parm={"path": ""},
         ddf_solsdir: dict = {"path": ""},
         update_version_file: bool = False,
