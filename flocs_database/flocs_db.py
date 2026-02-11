@@ -114,6 +114,7 @@ class FlocsSlurmProcessor:
         self,
         database: str,
         slurm_queues: list,
+        rundir: str,
         table_name: Annotated[
             str, Parameter(help="Database table to start processing in.")
         ] = "flocs_processing",
@@ -121,11 +122,12 @@ class FlocsSlurmProcessor:
         self.DATABASE = database
         self.SLURM_QUEUES = slurm_queues
         self.TABLE_NAME = table_name
+        self.RUNDIR = rundir
 
     def launch_calibrator(self, field_name, sas_id, restart: bool = False):
         if not restart:
             try:
-                cmd = f"flocs-run linc calibrator --record-toil-stats --scheduler slurm --rundir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir/ --outdir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 24:00:00 --slurm-account lofarvlbi --runner toil --save-raw-solutions /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/calibrator/L{sas_id}"
+                cmd = f"flocs-run linc calibrator --record-toil-stats --scheduler slurm --rundir {self.RUNDIR}/{field_name}/rundir/ --outdir {self.RUNDIR}/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 24:00:00 --slurm-account lofarvlbi --runner toil --save-raw-solutions {self.RUNDIR}/{field_name}/calibrator/L{sas_id}"
                 print(cmd)
                 with open(
                     f"log_LINC_calibrator_{field_name}_{sas_id}.txt", "a"
@@ -143,7 +145,7 @@ class FlocsSlurmProcessor:
                 print("something went wrong")
         else:
             rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir"
+                f"{self.RUNDIR}/{field_name}/rundir"
             )
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
@@ -152,7 +154,7 @@ class FlocsSlurmProcessor:
             # Last directory touched for this source
             rundir_final = rundirs_sorted_filtered[-1].parts[-1]
             try:
-                cmd = f"flocs-run linc calibrator --record-toil-stats --scheduler slurm --rundir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir/{rundir_final} --outdir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name} --restart --slurm-queue {self.SLURM_QUEUES} --slurm-time 24:00:00 --slurm-account lofarvlbi --runner toil --save-raw-solutions /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/calibrator/L{sas_id}"
+                cmd = f"flocs-run linc calibrator --record-toil-stats --scheduler slurm --rundir {self.RUNDIR}/{field_name}/rundir/{rundir_final} --outdir {self.RUNDIR}/{field_name} --restart --slurm-queue {self.SLURM_QUEUES} --slurm-time 24:00:00 --slurm-account lofarvlbi --runner toil --save-raw-solutions {self.RUNDIR}/{field_name}/calibrator/L{sas_id}"
                 print(cmd)
                 with open(
                     f"log_LINC_calibrator_{field_name}_{sas_id}.txt", "a"
@@ -174,9 +176,9 @@ class FlocsSlurmProcessor:
         if not restart:
             try:
                 cal_sol_path = glob.glob(
-                    f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/LINC_calibrator_L{sas_id_cal}*/results_LINC_calibrator/cal_solutions.h5"
+                    f"{self.RUNDIR}/{field_name}/LINC_calibrator_L{sas_id_cal}*/results_LINC_calibrator/cal_solutions.h5"
                 )[0]
-                cmd = f"flocs-run linc target --record-toil-stats --scheduler slurm --rundir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir/ --outdir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --output-fullres-data --min-unflagged-fraction 0.05 --cal-solutions {cal_sol_path} /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/target/L{sas_id}/"
+                cmd = f"flocs-run linc target --record-toil-stats --scheduler slurm --rundir {self.RUNDIR}/{field_name}/rundir/ --outdir {self.RUNDIR}/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --output-fullres-data --min-unflagged-fraction 0.05 --cal-solutions {cal_sol_path} {self.RUNDIR}/{field_name}/target/L{sas_id}/"
                 print(cmd)
                 with open(
                     f"log_LINC_target_{field_name}_{sas_id}.txt", "w"
@@ -194,7 +196,7 @@ class FlocsSlurmProcessor:
                 print("something went wrong")
         else:
             rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir"
+                f"{self.RUNDIR}/{field_name}/rundir"
             )
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
@@ -204,9 +206,9 @@ class FlocsSlurmProcessor:
             rundir_final = rundirs_sorted_filtered[-1].parts[-1]
             try:
                 cal_sol_path = glob.glob(
-                    f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/LINC_calibrator_L{sas_id_cal}*/results_LINC_calibrator/cal_solutions.h5"
+                    f"{self.RUNDIR}/{field_name}/LINC_calibrator_L{sas_id_cal}*/results_LINC_calibrator/cal_solutions.h5"
                 )[0]
-                cmd = f"flocs-run linc target --record-toil-stats --scheduler slurm --rundir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir/{rundir_final} --restart --outdir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --output-fullres-data --min-unflagged-fraction 0.05 --cal-solutions {cal_sol_path} /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/target/L{sas_id}/"
+                cmd = f"flocs-run linc target --record-toil-stats --scheduler slurm --rundir {self.RUNDIR}/{field_name}/rundir/{rundir_final} --restart --outdir {self.RUNDIR}/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --output-fullres-data --min-unflagged-fraction 0.05 --cal-solutions {cal_sol_path} {self.RUNDIR}/{field_name}/target/L{sas_id}/"
                 print(cmd)
                 with open(f"log_LINC_target_{field_name}.txt", "a") as f_out, open(
                     f"log_LINC_target_{field_name}_err.txt", "a"
@@ -227,7 +229,7 @@ class FlocsSlurmProcessor:
         if not restart:
             print(f"Generating input catalogue(s) for {field_name}")
             rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/"
+                f"{self.RUNDIR}/{field_name}/"
             )
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
@@ -278,7 +280,7 @@ class FlocsSlurmProcessor:
                 return False
         else:
             rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/"
+                f"{self.RUNDIR}/{field_name}/"
             )
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
@@ -290,7 +292,7 @@ class FlocsSlurmProcessor:
             linc_target_dir = rundirs_sorted_filtered[-1].parts[-1]
 
             vlbi_rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir"
+                f"{self.RUNDIR}/{field_name}/rundir"
             )
             vlbi_rundirs_sorted = sorted(vlbi_rundirs.iterdir(), key=os.path.getctime)
             # vlbi_rundirs_sorted_filtered = [d for d in vlbi_rundirs_sorted if ((sas_id in d.parts[-1]) and ("delay" in d.parts[-1]))]
@@ -301,7 +303,7 @@ class FlocsSlurmProcessor:
 
             delay_csv = rundirs / "delay_calibrators.csv"
             try:
-                cmd = f"flocs-run vlbi delay-calibration --record-toil-stats --scheduler slurm --rundir {vlbi_dir} --restart --outdir /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --delay-calibrator /project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/{delay_csv} --ms-suffix dp3concat {linc_target_dir}"
+                cmd = f"flocs-run vlbi delay-calibration --record-toil-stats --scheduler slurm --rundir {vlbi_dir} --restart --outdir {self.RUNDIR}/{field_name} --slurm-queue {self.SLURM_QUEUES} --slurm-time 48:00:00 --slurm-account lofarvlbi --runner toil --delay-calibrator {self.RUNDIR}/{field_name}/{delay_csv} --ms-suffix dp3concat {linc_target_dir}"
                 print(cmd)
                 os.chdir(rundirs)
                 with open(
@@ -322,7 +324,7 @@ class FlocsSlurmProcessor:
 
     def launch_vlbi_ddcal(self, field_name, sas_id, restart: bool = False):
         rundirs = pathlib.Path(
-            f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/"
+            f"{self.RUNDIR}/{field_name}/"
         )
         rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
         rundirs_sorted_filtered = [
@@ -337,7 +339,7 @@ class FlocsSlurmProcessor:
         )[0]
 
         vlbi_rundirs = pathlib.Path(
-            f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir"
+            f"{self.RUNDIR}/{field_name}/rundir"
         )
         vlbi_rundirs_sorted = sorted(vlbi_rundirs.iterdir(), key=os.path.getctime)
         vlbi_rundirs_sorted_filtered = [
@@ -372,7 +374,7 @@ class FlocsSlurmProcessor:
                 return False
         else:
             vlbi_dd_rundirs = pathlib.Path(
-                f"/project/lofarvlbi/Data/fsweijen/banados-high-z/{field_name}/rundir"
+                f"{self.RUNDIR}/{field_name}/rundir"
             )
             vlbi_dd_rundirs_sorted = sorted(
                 vlbi_rundirs.iterdir(), key=os.path.getctime
