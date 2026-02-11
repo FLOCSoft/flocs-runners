@@ -61,17 +61,18 @@ class VLBIJSONConfig:
 
         if msin:
             #For polarization workflow -- any user-specified ms
-            if os.path.isdir(msin):
-                files = [msin]
-            else:
+            if not os.path.isdir(msin):
                 logger.critical(f"Input path does not exist: {msin}")
                 sys.exit(-1)
+            files = [msin]
             logger.info(f"Using ms: {msin} for polarization imaging")
         else:
             filedir = os.path.join(mspath, f"*{ms_suffix}")
             logger.info(f"Searching {filedir}")
             files = sorted(glob.glob(filedir))
-            
+            if not files:
+                logger.critical(f"No MS files found in {mspath} with suffice {ms_suffix}")
+                sys.exit(-1)
         logger.info(f"Found {len(files)} files")
 
         if (not prefac_h5parm) or (
