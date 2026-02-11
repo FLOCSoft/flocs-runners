@@ -74,9 +74,11 @@ class STAGING_STATUS(Enum):
 
 @app.command()
 def create(
-    dbname: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    dbname: Annotated[
+        str, Parameter(help="Sqlite3 database from which processing will be done.")
+    ],
     table_name: Annotated[
-        str, Parameter(help="Directory where MSes are located.")
+        str, Parameter(help="Database table that will be processed.")
     ] = "processing_flocs",
     pipelines: Annotated[Iterable[str], Parameter(help="")] = ["linc"],
 ):
@@ -97,12 +99,20 @@ def create(
 
 @app.command()
 def process_database(
-    dbname: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    dbname: Annotated[
+        str, Parameter(help="Sqlite3 database from which processing will be done.")
+    ],
+    rundir: Annotated[
+        str,
+        Parameter(
+            help="Directory where data is located and processing will take place."
+        ),
+    ],
     slurm_queues: Annotated[
         list[str], Parameter(help="Slurm queues that jobs can be submitted to.")
     ],
     table_name: Annotated[
-        str, Parameter(help="Directory where MSes are located.")
+        str, Parameter(help="Database table that will be processed.")
     ] = "processing_flocs",
 ):
     fp = FlocsSlurmProcessor(dbname, slurm_queues, table_name)
@@ -144,9 +154,7 @@ class FlocsSlurmProcessor:
             except subprocess.CalledProcessError:
                 print("something went wrong")
         else:
-            rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/rundir"
-            )
+            rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/rundir")
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
                 d for d in rundirs_sorted if sas_id in d.parts[-1]
@@ -195,9 +203,7 @@ class FlocsSlurmProcessor:
             except subprocess.CalledProcessError:
                 print("something went wrong")
         else:
-            rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/rundir"
-            )
+            rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/rundir")
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
                 d for d in rundirs_sorted if sas_id in d.parts[-1]
@@ -228,9 +234,7 @@ class FlocsSlurmProcessor:
     def launch_vlbi_delay(self, field_name, sas_id, restart: bool = False):
         if not restart:
             print(f"Generating input catalogue(s) for {field_name}")
-            rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/"
-            )
+            rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/")
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
                 d
@@ -279,9 +283,7 @@ class FlocsSlurmProcessor:
                 print("something went wrong")
                 return False
         else:
-            rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/"
-            )
+            rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/")
             rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
             rundirs_sorted_filtered = [
                 d
@@ -291,9 +293,7 @@ class FlocsSlurmProcessor:
             # Last LINC target reduction for this source
             linc_target_dir = rundirs_sorted_filtered[-1].parts[-1]
 
-            vlbi_rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/rundir"
-            )
+            vlbi_rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/rundir")
             vlbi_rundirs_sorted = sorted(vlbi_rundirs.iterdir(), key=os.path.getctime)
             # vlbi_rundirs_sorted_filtered = [d for d in vlbi_rundirs_sorted if ((sas_id in d.parts[-1]) and ("delay" in d.parts[-1]))]
             vlbi_rundirs_sorted_filtered = [
@@ -323,9 +323,7 @@ class FlocsSlurmProcessor:
         return False
 
     def launch_vlbi_ddcal(self, field_name, sas_id, restart: bool = False):
-        rundirs = pathlib.Path(
-            f"{self.RUNDIR}/{field_name}/"
-        )
+        rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/")
         rundirs_sorted = sorted(rundirs.iterdir(), key=os.path.getctime)
         rundirs_sorted_filtered = [
             d
@@ -338,9 +336,7 @@ class FlocsSlurmProcessor:
             f"{linc_target_dir}/results_LINC_target/results/*.dp3concat"
         )[0]
 
-        vlbi_rundirs = pathlib.Path(
-            f"{self.RUNDIR}/{field_name}/rundir"
-        )
+        vlbi_rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/rundir")
         vlbi_rundirs_sorted = sorted(vlbi_rundirs.iterdir(), key=os.path.getctime)
         vlbi_rundirs_sorted_filtered = [
             d for d in vlbi_rundirs_sorted if ("delay" in d.parts[-1])
@@ -373,9 +369,7 @@ class FlocsSlurmProcessor:
                 print("something went wrong")
                 return False
         else:
-            vlbi_dd_rundirs = pathlib.Path(
-                f"{self.RUNDIR}/{field_name}/rundir"
-            )
+            vlbi_dd_rundirs = pathlib.Path(f"{self.RUNDIR}/{field_name}/rundir")
             vlbi_dd_rundirs_sorted = sorted(
                 vlbi_rundirs.iterdir(), key=os.path.getctime
             )
