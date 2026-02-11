@@ -120,6 +120,7 @@ class FlocsSlurmProcessor:
     ):
         self.DATABASE = database
         self.SLURM_QUEUES = slurm_queues
+        self.TABLE_NAME = table_name
 
     def launch_calibrator(self, field_name, sas_id, restart: bool = False):
         if not restart:
@@ -405,16 +406,16 @@ class FlocsSlurmProcessor:
         with sqlite3.connect(self.DATABASE) as db:
             cursor = db.cursor()
             not_started = cursor.execute(
-                f"select count(source_name) from processing_banados where (status_calibrator1=={PIPELINE_STATUS.nothing.value} or status_calibrator2=={PIPELINE_STATUS.nothing.value})"
+                f"select count(source_name) from {self.TABLE_NAME} where (status_calibrator1=={PIPELINE_STATUS.nothing.value} or status_calibrator2=={PIPELINE_STATUS.nothing.value})"
             ).fetchall()[0][0]
             downloaded = cursor.execute(
-                f"select count(source_name) from processing_banados where (status_calibrator1=={PIPELINE_STATUS.downloaded.value} or status_calibrator2=={PIPELINE_STATUS.downloaded.value})"
+                f"select count(source_name) from {self.TABLE_NAME} where (status_calibrator1=={PIPELINE_STATUS.downloaded.value} or status_calibrator2=={PIPELINE_STATUS.downloaded.value})"
             ).fetchall()[0][0]
             finished = cursor.execute(
-                f"select count(source_name) from processing_banados where (status_calibrator1=={PIPELINE_STATUS.finished.value} or status_calibrator2=={PIPELINE_STATUS.finished.value})"
+                f"select count(source_name) from {self.TABLE_NAME} where (status_calibrator1=={PIPELINE_STATUS.finished.value} or status_calibrator2=={PIPELINE_STATUS.finished.value})"
             ).fetchall()[0][0]
             error = cursor.execute(
-                f"select count(source_name) from processing_banados where (status_calibrator1=={PIPELINE_STATUS.error.value} or status_calibrator2=={PIPELINE_STATUS.error.value})"
+                f"select count(source_name) from {self.TABLE_NAME} where (status_calibrator1=={PIPELINE_STATUS.error.value} or status_calibrator2=={PIPELINE_STATUS.error.value})"
             ).fetchall()[0][0]
             print(f"{not_started} calibrators not yet started")
             print(f"{downloaded} calibrators downloaded")
@@ -422,19 +423,19 @@ class FlocsSlurmProcessor:
             print(f"{error} calibrators failed")
 
             not_started = cursor.execute(
-                f"select count(source_name) from processing_banados where status_target=={PIPELINE_STATUS.nothing.value}"
+                f"select count(source_name) from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.nothing.value}"
             ).fetchall()[0][0]
             downloaded = cursor.execute(
-                f"select count(source_name) from processing_banados where status_target=={PIPELINE_STATUS.downloaded.value}"
+                f"select count(source_name) from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.downloaded.value}"
             ).fetchall()[0][0]
             finished = cursor.execute(
-                f"select count(source_name) from processing_banados where status_target=={PIPELINE_STATUS.finished.value}"
+                f"select count(source_name) from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.finished.value}"
             ).fetchall()[0][0]
             processing = cursor.execute(
-                f"select count(source_name) from processing_banados where status_target=={PIPELINE_STATUS.processing.value}"
+                f"select count(source_name) from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.processing.value}"
             ).fetchall()[0][0]
             error = cursor.execute(
-                f"select count(source_name) from processing_banados where status_target=={PIPELINE_STATUS.error.value}"
+                f"select count(source_name) from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.error.value}"
             ).fetchall()[0][0]
             print(f"{not_started} targets not yet started")
             print(f"{downloaded} targets downloaded")
@@ -462,7 +463,7 @@ class FlocsSlurmProcessor:
                     with sqlite3.connect(self.DATABASE) as db:
                         cursor = db.cursor()
                         cursor.execute(
-                            f"update processing_banados set status_{field['identifier']}={PIPELINE_STATUS.error.value} where source_name=='{field['name']}'"
+                            f"update {self.TABLE_NAME} set status_{field['identifier']}={PIPELINE_STATUS.error.value} where source_name=='{field['name']}'"
                         )
                 else:
                     print("Future is done")
@@ -472,18 +473,18 @@ class FlocsSlurmProcessor:
                         cursor = db.cursor()
                         if result:
                             cursor.execute(
-                                f"update processing_banados set status_{field['identifier']}={PIPELINE_STATUS.finished.value} where source_name=='{field['name']}'"
+                                f"update {self.TABLE_NAME} set status_{field['identifier']}={PIPELINE_STATUS.finished.value} where source_name=='{field['name']}'"
                             )
                             print(
                                 f"Processing {field['identifier']} for {field['name']} succeeded."
                             )
                             if field["identifier"] == "target":
                                 cursor.execute(
-                                    f"update processing_banados set status_delay={PIPELINE_STATUS.downloaded.value} where source_name=='{field['name']}'"
+                                    f"update {self.TABLE_NAME} set status_delay={PIPELINE_STATUS.downloaded.value} where source_name=='{field['name']}'"
                                 )
                         else:
                             cursor.execute(
-                                f"update processing_banados set status_{field['identifier']}={PIPELINE_STATUS.error.value} where source_name=='{field['name']}'"
+                                f"update {self.TABLE_NAME} set status_{field['identifier']}={PIPELINE_STATUS.error.value} where source_name=='{field['name']}'"
                             )
                             print(
                                 f"Processing {field['identifier']} for {field['name']} failed."
@@ -524,17 +525,17 @@ class FlocsSlurmProcessor:
                         print("Checking for new LINC Calibrator fields")
                         cursor = db.cursor()
                         not_started1 = cursor.execute(
-                            f"select * from processing_banados where status_calibrator1=={PIPELINE_STATUS.downloaded.value}"
+                            f"select * from {self.TABLE_NAME} where status_calibrator1=={PIPELINE_STATUS.downloaded.value}"
                         ).fetchall()
                         not_started2 = cursor.execute(
-                            f"select * from processing_banados where status_calibrator2=={PIPELINE_STATUS.downloaded.value}"
+                            f"select * from {self.TABLE_NAME} where status_calibrator2=={PIPELINE_STATUS.downloaded.value}"
                         ).fetchall()
 
                         restart1 = cursor.execute(
-                            f"select * from processing_banados where status_calibrator1=={PIPELINE_STATUS.error.value}"
+                            f"select * from {self.TABLE_NAME} where status_calibrator1=={PIPELINE_STATUS.error.value}"
                         ).fetchall()
                         restart2 = cursor.execute(
-                            f"select * from processing_banados where status_calibrator2=={PIPELINE_STATUS.error.value}"
+                            f"select * from {self.TABLE_NAME} where status_calibrator2=={PIPELINE_STATUS.error.value}"
                         ).fetchall()
 
                     if restart1:
@@ -559,7 +560,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_calibrator1={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
+                                        f"update {self.TABLE_NAME} set status_calibrator1={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
                                     )
                     if restart2:
                         for name, cal1, cal2, cal_final, target, _, _, _, _ in restart2:
@@ -583,7 +584,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_calibrator2={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
+                                        f"update {self.TABLE_NAME} set status_calibrator2={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
                                     )
                     if not_started1:
                         for (
@@ -617,7 +618,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_calibrator1={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
+                                        f"update {self.TABLE_NAME} set status_calibrator1={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
                                     )
                     if not_started2:
                         for (
@@ -651,7 +652,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_calibrator2={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
+                                        f"update {self.TABLE_NAME} set status_calibrator2={PIPELINE_STATUS.processing.value} where source_name=='{name}' and sas_id_target=='{target}'"
                                     )
                     else:
                         print("no new fields for LINC calibrator")
@@ -660,10 +661,10 @@ class FlocsSlurmProcessor:
                     with sqlite3.connect(self.DATABASE) as db:
                         cursor = db.cursor()
                         not_started = cursor.execute(
-                            f"select * from processing_banados where status_target=={PIPELINE_STATUS.downloaded.value} and sas_id_calibrator_final is not null"
+                            f"select * from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.downloaded.value} and sas_id_calibrator_final is not null"
                         ).fetchall()
                         restart = cursor.execute(
-                            f"select * from processing_banados where status_target=={PIPELINE_STATUS.error.value}"
+                            f"select * from {self.TABLE_NAME} where status_target=={PIPELINE_STATUS.error.value}"
                         ).fetchall()
                     if restart:
                         for name, cal1, cal2, cal_final, target, _, _, _, _ in restart:
@@ -680,7 +681,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_target={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
+                                        f"update {self.TABLE_NAME} set status_target={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
                                     )
                                 with lock:
                                     future = tpe.submit(
@@ -722,7 +723,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_target={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
+                                        f"update {self.TABLE_NAME} set status_target={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
                                     )
                                 with lock:
                                     future = tpe.submit(
@@ -742,10 +743,10 @@ class FlocsSlurmProcessor:
                     with sqlite3.connect(self.DATABASE) as db:
                         cursor = db.cursor()
                         not_started = cursor.execute(
-                            f"select * from processing_banados where status_delay=={PIPELINE_STATUS.downloaded.value} and status_target=={PIPELINE_STATUS.finished.value}"
+                            f"select * from {self.TABLE_NAME} where status_delay=={PIPELINE_STATUS.downloaded.value} and status_target=={PIPELINE_STATUS.finished.value}"
                         ).fetchall()
                         restart = cursor.execute(
-                            f"select * from processing_banados where status_delay=={PIPELINE_STATUS.error.value}"
+                            f"select * from {self.TABLE_NAME} where status_delay=={PIPELINE_STATUS.error.value}"
                         ).fetchall()
                     if restart:
                         for name, cal1, cal2, cal_final, target, _, _, _, _ in restart:
@@ -762,7 +763,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_delay={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
+                                        f"update {self.TABLE_NAME} set status_delay={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
                                     )
                                 with lock:
                                     future = tpe.submit(
@@ -803,7 +804,7 @@ class FlocsSlurmProcessor:
                                 with sqlite3.connect(self.DATABASE) as db:
                                     cursor = db.cursor()
                                     cursor.execute(
-                                        f"update processing_banados set status_delay={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
+                                        f"update {self.TABLE_NAME} set status_delay={PIPELINE_STATUS.processing.value} where source_name=='{name}'"
                                     )
                                 with lock:
                                     future = tpe.submit(
