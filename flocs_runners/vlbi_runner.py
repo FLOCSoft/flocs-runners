@@ -87,9 +87,11 @@ class VLBIJSONConfig:
         elif msin:
             mslist = []
             for ms in files:
-                ms_dir_object = {"class": "Directory","path": os.path.abspath(ms)}
-                mslist.append(ms_dir_object)
-            self.configdict["msin"] = [mslist]
+                ms_dir_object = {
+                    "class": "Directory",
+                    "path": os.path.abspath(ms)
+                }
+                mslist.append(ms_dir_object)
         else:
             prefac_freqs = get_prefactor_freqs(
                 solname=prefac_h5parm["path"], solset="target"
