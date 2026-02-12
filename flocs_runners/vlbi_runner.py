@@ -84,6 +84,16 @@ class VLBIJSONConfig:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
                 mslist.append(x)
             self.configdict["msin"] = mslist
+        elif msin:
+            mslist = []
+            for ms in files:
+            # Create the dictionary directly instead of parsing a string
+                ms_dir_object = {
+                "class": "Directory",
+                "path": os.path.abspath(ms)
+                }
+                mslist.append(ms_dir_object)
+            self.configdict["msin"] = [mslist]
         else:
             prefac_freqs = get_prefactor_freqs(
                 solname=prefac_h5parm["path"], solset="target"
