@@ -1109,6 +1109,8 @@ def polarization_imaging(
     for key in unneeded_keys:
         args_for_linc.pop(key,None)
     for key, val in args_for_linc.items():
+        if key == "msin":
+            continue
         config.add_entry(key, val)
     config.save("mslist_VLBI_polarization-imaging.json")
     if not args["config_only"]:
