@@ -64,7 +64,7 @@ class VLBIJSONConfig:
             if not os.path.isdir(msin):
                 logger.critical(f"Input path does not exist: {msin}")
                 sys.exit(-1)
-            files = [msin]
+            files = sorted(glob.glob(msin))
             logger.info(f"Using ms: {msin} for polarization imaging")
         else:
             filedir = os.path.join(mspath, f"*{ms_suffix}")
