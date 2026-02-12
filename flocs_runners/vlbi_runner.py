@@ -1013,9 +1013,9 @@ def split_directions(
 def polarization_imaging(
     msin: Annotated[str, Parameter(help="Directory where MS is located.")],
     pixel_scale: Annotated[
-        Optional[float],
+        Optional[str],
         Parameter(help="Pixel sampling for imaging in WSClean"),
-    ] = 0.075,
+    ] = "0.075arcsec",
     resolution: Annotated[
         Optional[str],
         Parameter(help="Gaussian taper for shaping the PSF in WSClean"),
@@ -1231,7 +1231,7 @@ def setup(
         prefac_h5parm=args["solset"],
     )
     unneeded_keys = [
-        "mspath",
+        "msin",
         "config_only",
         "scheduler",
         "runner",
