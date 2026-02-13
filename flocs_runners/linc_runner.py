@@ -278,7 +278,7 @@ class LINCJSONConfig:
             cmd += ["--no-cwl-default-ram"]
             cmd += ["--defaultMemory", "8Gi"]
             cmd += ["--no-read-only"]
-            cmd += ["--retryCount", "3"]
+            cmd += ["--retryCount", "1"]
             cmd += ["--singularity"]
             cmd += ["--disableCaching"]
             cmd += ["--writeLogsFromAllJobs", "True"]
