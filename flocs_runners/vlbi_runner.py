@@ -368,6 +368,19 @@ class VLBIJSONConfig:
                 os.mkdir(os.environ["APPTAINERENV_LOGSDIR"])
                 os.mkdir(os.environ["APPTAINERENV_TMPDIR"])
                 os.mkdir(os.environ["APPTAINERENV_RESULTSDIR"])
+            if "APPTAINER_BINDPATH" not in os.environ:
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(workdir)}"
+                )
+            else:
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{workdir}"
+                    + f",{os.environ['APPTAINER_BINDPATH']}"
+                )
         elif "singularity" in out:
             os.environ["SINGULARITYENV_VLBI_DATA_ROOT"] = os.environ["VLBI_DATA_ROOT"]
             os.environ["SINGULARITYENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
@@ -387,6 +400,19 @@ class VLBIJSONConfig:
                 os.mkdir(os.environ["SINGULARITYENV_LOGSDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_TMPDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_RESULTSDIR"])
+            if "SINGULARITY_BINDPATH" not in os.environ:
+                os.environ["SINGULARITY_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(workdir)}"
+                )
+            else:
+                os.environ["SINGULARITY_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{workdir}"
+                    + f",{os.environ['SINGULARITY_BINDPATH']}"
+                )
         if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH"] = (
                 "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
