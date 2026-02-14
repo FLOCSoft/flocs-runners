@@ -301,7 +301,7 @@ class LINCJSONConfig:
                 os.path.join(get_container_env_var("LOGSDIR"), dir_slurmlogs),
             ]
             cmd += ["--no-compute-checksum"]
-            cmd += ["--moveOutputs True"]
+            cmd += ["--moveOutputs", "True"]
             cmd += [
                 os.path.join(
                     os.environ["LINC_DATA_ROOT"],
