@@ -769,6 +769,9 @@ def calibrator(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_LINC_calibrator.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1072,6 +1075,9 @@ def target(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_LINC_target.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         if args["offline_workers"]:
             logger.info("Offline-worker mode requested")

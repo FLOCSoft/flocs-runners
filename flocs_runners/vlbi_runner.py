@@ -706,6 +706,9 @@ def delay_calibration(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_delay-calibration.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -872,6 +875,9 @@ def dd_calibration(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_dd-calibration.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1007,6 +1013,9 @@ def split_directions(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_split-directions.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1151,6 +1160,9 @@ def setup(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_setup.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1250,6 +1262,9 @@ def concatenate_flag(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_concatenate-flag.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1359,6 +1374,9 @@ def phaseup_concat(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_phaseup-concat.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
