@@ -509,20 +509,10 @@ def delay_calibration(
         [
             Token(
                 value=os.path.join(
-                    os.environ["VLBI_DATA_ROOT"], "facetselfcal_config.txt"
+                    os.environ["VLBI_DATA_ROOT"], "pipeline_config_files", "facetselfcal_config.txt"
                 )
             )
         ],
-    ),
-    phaseup_config: Annotated[
-        Optional[dict],
-        Parameter(
-            help="Settings for the solve to determine phasediff scores.",
-            converter=cwl_file,
-        ),
-    ] = cwl_file(
-        str,
-        [Token(value=os.path.join(os.environ["VLBI_DATA_ROOT"], "phaseup_config.txt"))],
     ),
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
