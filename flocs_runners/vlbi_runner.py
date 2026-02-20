@@ -827,6 +827,7 @@ def dd_calibration(
         ),
     ] = False,
 ):
+    args = locals()
     cat = Table.read(source_catalogue["path"])
     cat_modified = False
     for source in cat:
@@ -845,7 +846,6 @@ def dd_calibration(
         shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
         cat.write(source_catalogue, overwrite=True)
 
-    args = locals()
     logger.info("Generating VLBI dd-calibration config")
     config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
     unneeded_keys = [
