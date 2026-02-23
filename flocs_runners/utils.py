@@ -248,7 +248,7 @@ def download_skymodel(
     name = tab.getcol("NAME")[0]
     filename = os.path.abspath(f"skymodel_LINC_{name}.txt")
     subprocess.run(
-        f"download_skymodel_target.py --Radius 5 --Source {survey} --targetname {name} {os.path.abspath(ms)} {os.path.join(output_dir, filename)}",
+        f"apptainer exec -B {os.path.join(os.environ['APPTAINER_PULLDIR'], 'astronrd_linc_latest.sif')} download_skymodel_target.py --Radius 5 --Source {survey} --targetname {name} {os.path.abspath(ms)} {os.path.join(output_dir, filename)}",
         shell=True,
     )
     return filename
