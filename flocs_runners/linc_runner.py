@@ -1083,7 +1083,7 @@ def target(
             logger.info("Offline-worker mode requested")
             logger.info("Downloading spinifex corrections")
             new_h5 = obtain_spinifex(
-                config.configdict["msin"][0]["path"], args["cal_solutions"]
+                config.configdict["msin"][0]["path"], args["cal_solutions"]["path"]
             )
             args["cal_solutions"]["path"] = new_h5
             args["get_RM"] = False
