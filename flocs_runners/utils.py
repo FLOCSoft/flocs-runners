@@ -9,6 +9,7 @@ from subprocess import CalledProcessError
 from typing import Optional, Sequence, Union
 
 from astropy.coordinates import SkyCoord
+import astropy.units as u
 import casacore.tables as ct
 import numpy as np
 import spinifex
