@@ -990,7 +990,7 @@ def target(
     ] = False,
     solveralgorithm: Annotated[
         str, Parameter(help="Solver algorithm for DP3 to use.")
-    ] = "directioniterative",
+    ] = None,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
