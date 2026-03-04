@@ -777,7 +777,7 @@ def calibrator(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_LINC_calibrator.json")
+    config.save(f"mslist_{config.obsid}_LINC_calibrator.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1089,7 +1089,7 @@ def target(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_LINC_target.json")
+    config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
