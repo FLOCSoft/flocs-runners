@@ -682,8 +682,8 @@ def calibrator(
         ),
     ] = 2000,
     solveralgorithm: Annotated[
-        str, Parameter(help="Solver algorithm for DP3 to use.")
-    ] = "directioniterative",
+        Optional[str], Parameter(help="Solver algorithm for DP3 to use. If not given, use DP3 default.")
+    ] = None,
     uvlambdamin: Annotated[
         Optional[float],
         Parameter(
