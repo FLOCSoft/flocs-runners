@@ -459,7 +459,7 @@ def calibrator(
         Parameter(
             help="Save the intermediate, raw solution tables for (bandpass, faraday, ion, polalign)."
         ),
-    ] = False,
+    ] = True,
     update_version_file: Annotated[
         bool,
         Parameter(help="Overwrite the $LINC_DATA_ROOT/.versions file if it exists."),
