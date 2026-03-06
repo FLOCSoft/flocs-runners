@@ -183,7 +183,7 @@ class LINCJSONConfig:
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
-        jobStore: str = "",
+        toil_jobstore: str = "",
     ):
         if self.configfile is None:
             raise RuntimeError("No config file has been created. Save it first.")
@@ -287,10 +287,10 @@ class LINCJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
-            if not jobStore:
+            if not toil_jobstore:
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
-                cmd += ["--jobStore", jobStore]
+                cmd += ["--jobStore", toil_jobstore]
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
@@ -742,9 +742,9 @@ def calibrator(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
-    jobStore: Annotated[
+    toil_jobstore: Annotated[
         str,
-        Parameter(help="Directory in which to put the Toil jobStore."),
+        Parameter(help="Directory in which to put the Toil jobstore."),
     ] = "",
 ):
     args = locals()
@@ -770,7 +770,7 @@ def calibrator(
         "restart",
         "record_toil_stats",
         "outdir",
-        "jobStore",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -794,7 +794,7 @@ def calibrator(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
-            jobStore=args["jobStore"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -1041,7 +1041,7 @@ def target(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
-    jobStore: Annotated[
+    toil_jobstore: Annotated[
         str,
         Parameter(help="Directory in which to put the Toil jobStore."),
     ] = "",
@@ -1071,7 +1071,7 @@ def target(
         "restart",
         "record_toil_stats",
         "outdir",
-        "jobStore",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     if args_for_linc["output_fullres_data"]:
@@ -1120,7 +1120,7 @@ def target(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
-            jobStore=args["jobStore"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
