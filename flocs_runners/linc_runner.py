@@ -1044,7 +1044,7 @@ def target(
     jobStore: Annotated[
         str,
         Parameter(help="Directory in which to put the Toil jobStore."),
-    ] = "<tmpdir_in_rundir>/jobStore",
+    ] = "",
 ):
     args = locals()
     logger.info("Generating LINC Target config")
