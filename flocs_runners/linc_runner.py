@@ -287,7 +287,7 @@ class LINCJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
-            if jobStore=="<tmpdir_in_rundir>/jobStore":
+            if not jobStore:
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
                 cmd += ["--jobStore", jobStore]
