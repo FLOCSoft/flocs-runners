@@ -744,7 +744,7 @@ def calibrator(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Directory in which to put the Toil jobstore."),
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_calibrator-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
     ] = "",
 ):
     args = locals()
@@ -1043,7 +1043,7 @@ def target(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Directory in which to put the Toil jobStore."),
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_target-701783' for data with obsid 701783). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
     ] = "",
 ):
     args = locals()
