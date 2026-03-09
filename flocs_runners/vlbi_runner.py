@@ -1033,7 +1033,7 @@ def polarization_imaging(
         Optional[str],
         Parameter(help="Pixel sampling for imaging in WSClean"),
     ] = "0.075arcsec",
-    resolution: Annotated[
+    taper: Annotated[
         Optional[str],
         Parameter(help="Gaussian taper for shaping the PSF in WSClean"),
     ] = "0.3arcsec",
