@@ -183,6 +183,7 @@ class LINCJSONConfig:
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
+        toil_jobstore: str = "",
     ):
         if self.configfile is None:
             raise RuntimeError("No config file has been created. Save it first.")
@@ -278,7 +279,7 @@ class LINCJSONConfig:
             cmd += ["--no-cwl-default-ram"]
             cmd += ["--defaultMemory", "8Gi"]
             cmd += ["--no-read-only"]
-            cmd += ["--retryCount", "3"]
+            cmd += ["--retryCount", "1"]
             cmd += ["--singularity"]
             cmd += ["--disableCaching"]
             cmd += ["--writeLogsFromAllJobs", "True"]
@@ -286,7 +287,10 @@ class LINCJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
-            cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
+            if not toil_jobstore:
+                cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
+            else:
+                cmd += ["--jobStore", toil_jobstore]
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
@@ -301,6 +305,7 @@ class LINCJSONConfig:
                 os.path.join(get_container_env_var("LOGSDIR"), dir_slurmlogs),
             ]
             cmd += ["--no-compute-checksum"]
+            cmd += ["--moveOutputs", "True"]
             cmd += [
                 os.path.join(
                     os.environ["LINC_DATA_ROOT"],
@@ -360,17 +365,15 @@ class LINCJSONConfig:
             )
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
                     + f",{os.path.dirname(workdir)}"
                 )
             else:
                 os.environ["APPTAINER_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/LINC"
-                    + f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
-                    + f",{os.path.dirname(workdir)}"
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{workdir}"
                     + f",{os.environ['APPTAINER_BINDPATH']}"
                 )
         elif "singularity" in out:
@@ -739,6 +742,10 @@ def calibrator(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_calibrator-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating LINC Calibrator config")
@@ -763,6 +770,7 @@ def calibrator(
         "restart",
         "record_toil_stats",
         "outdir",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -770,6 +778,9 @@ def calibrator(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_LINC_calibrator.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -783,6 +794,7 @@ def calibrator(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -1029,6 +1041,10 @@ def target(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_target-701783' for data with obsid 701783). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating LINC Target config")
@@ -1055,6 +1071,7 @@ def target(
         "restart",
         "record_toil_stats",
         "outdir",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     if args_for_linc["output_fullres_data"]:
@@ -1073,12 +1090,15 @@ def target(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_LINC_target.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         if args["offline_workers"]:
             logger.info("Offline-worker mode requested")
             logger.info("Downloading spinifex corrections")
             new_h5 = obtain_spinifex(
-                config.configdict["msin"][0]["path"], args["cal_solutions"]
+                config.configdict["msin"][0]["path"], args["cal_solutions"]["path"]
             )
             args["cal_solutions"]["path"] = new_h5
             args["get_RM"] = False
@@ -1100,6 +1120,7 @@ def target(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 

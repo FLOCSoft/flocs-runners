@@ -304,7 +304,7 @@ class VLBIJSONConfig:
             cmd += ["--no-cwl-default-ram"]
             cmd += ["--defaultMemory", "8Gi"]
             cmd += ["--no-read-only"]
-            cmd += ["--retryCount", "3"]
+            cmd += ["--retryCount", "1"]
             cmd += ["--singularity"]
             cmd += ["--disableCaching"]
             cmd += ["--writeLogsFromAllJobs", "True"]
@@ -331,6 +331,7 @@ class VLBIJSONConfig:
                 os.path.join(get_container_env_var("LOGSDIR"), dir_slurmlogs),
             ]
             cmd += ["--no-compute-checksum"]
+            cmd += ["--moveOutputs", "True"]
             cmd += [
                 os.path.join(
                     os.environ["VLBI_DATA_ROOT"], "workflows", f"{self.mode.value}.cwl"
@@ -381,6 +382,19 @@ class VLBIJSONConfig:
                 os.mkdir(os.environ["APPTAINERENV_LOGSDIR"])
                 os.mkdir(os.environ["APPTAINERENV_TMPDIR"])
                 os.mkdir(os.environ["APPTAINERENV_RESULTSDIR"])
+            if "APPTAINER_BINDPATH" not in os.environ:
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(workdir)}"
+                )
+            else:
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{workdir}"
+                    + f",{os.environ['APPTAINER_BINDPATH']}"
+                )
         elif "singularity" in out:
             os.environ["SINGULARITYENV_VLBI_DATA_ROOT"] = os.environ["VLBI_DATA_ROOT"]
             os.environ["SINGULARITYENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
@@ -400,6 +414,19 @@ class VLBIJSONConfig:
                 os.mkdir(os.environ["SINGULARITYENV_LOGSDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_TMPDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_RESULTSDIR"])
+            if "SINGULARITY_BINDPATH" not in os.environ:
+                os.environ["SINGULARITY_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{os.path.dirname(workdir)}"
+                )
+            else:
+                os.environ["SINGULARITY_BINDPATH"] = (
+                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
+                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
+                    + f",{workdir}"
+                    + f",{os.environ['SINGULARITY_BINDPATH']}"
+                )
         if "PYTHONPATH" in os.environ:
             os.environ["PYTHONPATH"] = (
                 "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
@@ -495,20 +522,10 @@ def delay_calibration(
         [
             Token(
                 value=os.path.join(
-                    os.environ["VLBI_DATA_ROOT"], "facetselfcal_config.txt"
+                    os.environ["VLBI_DATA_ROOT"], "pipeline_config_files", "facetselfcal_config.txt"
                 )
             )
         ],
-    ),
-    phaseup_config: Annotated[
-        Optional[dict],
-        Parameter(
-            help="Settings for the solve to determine phasediff scores.",
-            converter=cwl_file,
-        ),
-    ] = cwl_file(
-        str,
-        [Token(value=os.path.join(os.environ["VLBI_DATA_ROOT"], "phaseup_config.txt"))],
     ),
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
@@ -692,6 +709,9 @@ def delay_calibration(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_delay-calibration.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -820,6 +840,7 @@ def dd_calibration(
         ),
     ] = False,
 ):
+    args = locals()
     cat = Table.read(source_catalogue["path"])
     cat_modified = False
     for source in cat:
@@ -838,7 +859,6 @@ def dd_calibration(
         shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
         cat.write(source_catalogue, overwrite=True)
 
-    args = locals()
     logger.info("Generating VLBI dd-calibration config")
     config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
     unneeded_keys = [
@@ -858,6 +878,9 @@ def dd_calibration(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_dd-calibration.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -993,6 +1016,9 @@ def split_directions(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_split-directions.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1261,6 +1287,9 @@ def setup(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_setup.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1360,6 +1389,9 @@ def concatenate_flag(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_concatenate-flag.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
@@ -1469,6 +1501,9 @@ def phaseup_concat(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_phaseup-concat.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
     if not args["config_only"]:
         config.run_workflow(
             runner=args["runner"],
