@@ -207,6 +207,7 @@ def add_slurm_skeleton(
     job_name: str = "",
     queue: str = "",
     account: str = "",
+    memory: int = 0,
 ):
     sbatch_line = "#SBATCH "
     if time:
@@ -219,6 +220,8 @@ def add_slurm_skeleton(
         sbatch_line += f"-p {queue} "
     if account:
         sbatch_line += f"-A {account} "
+    if memory:
+        sbatch_line += f"--mem {memory}GB "
     wrapped = f"""#!/bin/bash
 {sbatch_line}
 {contents}

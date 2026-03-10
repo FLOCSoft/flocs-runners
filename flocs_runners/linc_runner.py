@@ -731,7 +731,11 @@ def calibrator(
     slurm_cores: Annotated[
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
-    ] = 32,
+    ] = 30,
+    slurm_memory: Annotated[
+        int,
+        Parameter(help="[cwltool] Memory in GB to reserve for the Slurm job."),
+    ]  = 128,
     restart: Annotated[
         bool,
         Parameter(help="Restart a Toil workflow from the given rundir."),
@@ -767,6 +771,7 @@ def calibrator(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
+        "slurm_memory",
         "restart",
         "record_toil_stats",
         "outdir",
@@ -790,6 +795,7 @@ def calibrator(
                 "account": args["slurm_account"],
                 "time": args["slurm_time"],
                 "cores": args["slurm_cores"],
+                "memory": args["slurm_memory"],
             },
             workdir=args["rundir"],
             restart=args["restart"],
@@ -1026,7 +1032,11 @@ def target(
     slurm_cores: Annotated[
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
-    ] = 32,
+    ] = 30,
+    slurm_memory: Annotated[
+        int,
+        Parameter(help="[cwltool] Memory in GB to reserve for the Slurm job."),
+    ]  = 128,
     offline_workers: Annotated[
         bool,
         Parameter(help="Indicates that the worker nodes do not have internet access."),
@@ -1067,6 +1077,7 @@ def target(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
+        "slurm_memory",
         "offline_workers",
         "restart",
         "record_toil_stats",
@@ -1116,6 +1127,7 @@ def target(
                 "account": args["slurm_account"],
                 "time": args["slurm_time"],
                 "cores": args["slurm_cores"],
+                "memory": args["slurm_memory"],
             },
             workdir=args["rundir"],
             restart=args["restart"],
