@@ -9,6 +9,7 @@ from .utils import (
     ra_dec_to_iltj,
     setup_toil_slurm,
     verify_slurm_environment_toil,
+    is_ms,
 )
 import glob
 import json
