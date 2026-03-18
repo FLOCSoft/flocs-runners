@@ -292,10 +292,19 @@ class LINCJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
+            jobstore_is_beegfs = False
             if not toil_jobstore:
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
+                    ["df", self.rundir]
+                ).lower().decode("utf-8")
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
+                    ["df", toil_jobstore]
+                ).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
+            if jobstore_is_beegfs:
+                logger.warning("BeeGFS file system detected for jobstore. Performance may suffer (greatly) from this. Consider changing its location via --toil_jobstore")
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
