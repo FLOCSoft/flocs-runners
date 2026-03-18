@@ -1018,7 +1018,7 @@ def target(
         Optional[bool], Parameter(help="Output full-resolution data.")
     ] = False,
     solveralgorithm: Annotated[
-        str, Parameter(help="Solver algorithm for DP3 to use.")
+        Optional[str], Parameter(help="Solver algorithm for DP3 to use.")
     ] = None,
     config_only: Annotated[
         bool,
