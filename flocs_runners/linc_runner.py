@@ -1139,7 +1139,8 @@ def target(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save(f"mslist_{config.obsid}_LINC_target.json")
+    if args["config_only"]:
+        config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1161,6 +1162,7 @@ def target(
                 )
                 args["target_skymodel"] = {"class": "File", "path": model}
                 config.configdict["target_skymodel"] = args["target_skymodel"]
+        config.save(f"mslist_{config.obsid}_LINC_target.json")
         config.run_workflow(
             runner=args["runner"],
             scheduler=args["scheduler"],
