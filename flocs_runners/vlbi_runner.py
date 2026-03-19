@@ -222,6 +222,7 @@ class VLBIJSONConfig:
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
+        toil_jobstore: str = "",
     ):
         self.deduce_pipeline_mode()
         if not restart:
@@ -304,7 +305,10 @@ class VLBIJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
-            cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
+            if not toil_jobstore:
+                cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
+            else:
+                cmd += ["--jobStore", toil_jobstore]
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
@@ -667,6 +671,10 @@ def delay_calibration(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_delay-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating VLBI delay-calibration config")
@@ -689,6 +697,7 @@ def delay_calibration(
         "slurm_time",
         "restart",
         "record_toil_stats",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -711,6 +720,7 @@ def delay_calibration(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -826,6 +836,10 @@ def dd_calibration(
             help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
         ),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_dd-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     cat = Table.read(source_catalogue["path"])
@@ -858,6 +872,7 @@ def dd_calibration(
         "slurm_account",
         "slurm_time",
         "record_toil_stats",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -880,6 +895,7 @@ def dd_calibration(
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -980,6 +996,10 @@ def split_directions(
         bool,
         Parameter(help="Restart a toil workflow."),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_split-dir-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating VLBI split-directions config")
@@ -996,6 +1016,7 @@ def split_directions(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1017,6 +1038,7 @@ def split_directions(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -1125,6 +1147,10 @@ def setup(
         bool,
         Parameter(help="Restart a toil workflow."),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_setup-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating VLBI setup config")
@@ -1143,6 +1169,7 @@ def setup(
         "slurm_account",
         "slurm_time",
         "restart",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1164,6 +1191,7 @@ def setup(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -1229,6 +1257,10 @@ def concatenate_flag(
         bool,
         Parameter(help="Restart a toil workflow."),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_concat-flag-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating VLBI concatenate-flag config")
@@ -1245,6 +1277,7 @@ def concatenate_flag(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1266,6 +1299,7 @@ def concatenate_flag(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
@@ -1341,6 +1375,10 @@ def phaseup_concat(
         bool,
         Parameter(help="Restart a toil workflow."),
     ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_phaseup-concat-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+    ] = "",
 ):
     args = locals()
     logger.info("Generating VLBI phaseup-concat config")
@@ -1357,6 +1395,7 @@ def phaseup_concat(
         "slurm_queue",
         "slurm_account",
         "slurm_time",
+        "toil_jobstore",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -1378,6 +1417,7 @@ def phaseup_concat(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
         )
 
 
