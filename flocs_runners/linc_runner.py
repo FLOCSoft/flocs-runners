@@ -304,7 +304,9 @@ class LINCJSONConfig:
                 ).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
             if jobstore_is_beegfs:
-                logger.warning("BeeGFS file system detected for jobstore. Performance may suffer (greatly) from this. Consider changing its location via --toil_jobstore")
+                logger.warning(
+                    "BeeGFS file system detected for jobstore. Performance may suffer (greatly) from this. Consider changing its location via --toil_jobstore"
+                )
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
@@ -742,9 +744,9 @@ def calibrator(
         Parameter(help="Slurm account to use."),
     ] = "",
     slurm_time: Annotated[
-        str,
+        Optional[str],
         Parameter(help="Slurm time limit to use."),
-    ] = "",
+    ] = "24:00:00",
     slurm_cores: Annotated[
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
@@ -992,6 +994,9 @@ def target(
     aoflag_freqconcat: Annotated[
         Optional[bool], Parameter(help="AOFlagger frequency concatenation.")
     ] = True,
+    aoflag_cores: Annotated[
+        Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")
+    ] = 5,
     selfcal: Annotated[
         Optional[bool], Parameter(help="Enable self-calibration.")
     ] = False,
