@@ -207,6 +207,7 @@ def add_slurm_skeleton(
     job_name: str = "",
     queue: str = "",
     account: str = "",
+    memory: int = 0,
 ):
     sbatch_line = "#SBATCH "
     if time:
@@ -219,6 +220,8 @@ def add_slurm_skeleton(
         sbatch_line += f"-p {queue} "
     if account:
         sbatch_line += f"-A {account} "
+    if memory:
+        sbatch_line += f"--mem {memory}GB "
     wrapped = f"""#!/bin/bash
 {sbatch_line}
 {contents}
@@ -238,7 +241,7 @@ def obtain_spinifex(ms: str, h5parm: str, backup: bool = True) -> str:
         logger.info(f"Working on copy {h5parm}")
     ms_metadata = ms_tools.get_metadata_from_ms(Path(ms))
     rm = ms_tools.get_rm_from_ms(Path(ms), use_stations=ms_metadata.station_names)
-    h5parm_tools.write_rm_to_h5parm(rms=rm, h5parm_name=h5parm)
+    h5parm_tools.write_rm_to_h5parm(rms=rm, h5parm_name=h5parm, solset_name="target", soltab_name="spinifex")
     return os.path.abspath(h5parm)
 
 
@@ -249,7 +252,7 @@ def download_skymodel(
     name = tab.getcol("NAME")[0]
     filename = os.path.abspath(f"skymodel_LINC_{name}.txt")
     subprocess.run(
-        f"apptainer exec -B {os.path.join(os.environ['APPTAINER_PULLDIR'], 'astronrd_linc_latest.sif')} download_skymodel_target.py --Radius 5 --Source {survey} --targetname {name} {os.path.abspath(ms)} {os.path.join(output_dir, filename)}",
+        f"apptainer exec {os.path.join(os.environ['APPTAINER_PULLDIR'], 'astronrd_linc_latest.sif')} download_skymodel_target.py --Radius 5 --Source {survey} --targetname {name} {os.path.abspath(ms)} {os.path.join(output_dir, filename)}",
         shell=True,
     )
     return filename

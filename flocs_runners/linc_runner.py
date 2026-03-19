@@ -169,7 +169,10 @@ class LINCJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        logger.info("Copying results")
+        logger.info(
+            "Copying results to:",
+            os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
+        )
         shutil.move(
             self.rundir,
             os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
@@ -184,6 +187,7 @@ class LINCJSONConfig:
         restart: bool = False,
         record_stats: bool = False,
         toil_jobstore: str = "",
+        use_node_scratch: bool = False,
     ):
         if self.configfile is None:
             raise RuntimeError("No config file has been created. Save it first.")
@@ -231,6 +235,7 @@ class LINCJSONConfig:
                 wrapped_cmd = add_slurm_skeleton(
                     contents=cmd,
                     job_name=f"LINC_{self.mode.value}",
+                    local_scratch=use_node_scratch,
                     **slurm_params,
                 )
                 with open("temp_jobscript.sh", "w") as f:
@@ -287,10 +292,19 @@ class LINCJSONConfig:
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
+            jobstore_is_beegfs = False
             if not toil_jobstore:
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
+                    ["df", self.rundir]
+                ).lower().decode("utf-8")
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
+                    ["df", toil_jobstore]
+                ).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
+            if jobstore_is_beegfs:
+                logger.warning("BeeGFS file system detected for jobstore. Performance may suffer (greatly) from this. Consider changing its location via --toil_jobstore")
             cmd += ["--workDir", workdir]
             if is_ceph:
                 logger.info("Detected CEPH file system, not setting coordinationDir.")
@@ -459,7 +473,7 @@ def calibrator(
         Parameter(
             help="Save the intermediate, raw solution tables for (bandpass, faraday, ion, polalign)."
         ),
-    ] = False,
+    ] = True,
     update_version_file: Annotated[
         bool,
         Parameter(help="Overwrite the $LINC_DATA_ROOT/.versions file if it exists."),
@@ -682,8 +696,11 @@ def calibrator(
         ),
     ] = 2000,
     solveralgorithm: Annotated[
-        str, Parameter(help="Solver algorithm for DP3 to use.")
-    ] = "directioniterative",
+        Optional[str],
+        Parameter(
+            help="Solver algorithm for DP3 to use. If not given, use DP3 default."
+        ),
+    ] = None,
     uvlambdamin: Annotated[
         Optional[float],
         Parameter(
@@ -731,7 +748,11 @@ def calibrator(
     slurm_cores: Annotated[
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
-    ] = 32,
+    ] = 30,
+    slurm_memory: Annotated[
+        int,
+        Parameter(help="[cwltool] Memory in GB to reserve for the Slurm job."),
+    ] = 128,
     restart: Annotated[
         bool,
         Parameter(help="Restart a Toil workflow from the given rundir."),
@@ -744,8 +765,16 @@ def calibrator(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_calibrator-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_calibrator-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
+    use_node_scratch: Annotated[
+        bool,
+        Parameter(
+            help="[cwltool+slurm] this will run the pipeline on the node's local $TMPDIR instead of a user-defined rundir."
+        ),
+    ] = False,
 ):
     args = locals()
     logger.info("Generating LINC Calibrator config")
@@ -767,21 +796,28 @@ def calibrator(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
+        "slurm_memory",
         "restart",
         "record_toil_stats",
         "outdir",
         "toil_jobstore",
+        "use_node_scratch",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_LINC_calibrator.json")
+    config.save(f"mslist_{config.obsid}_LINC_calibrator.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
     if not args["config_only"]:
+        if args["use_node_scratch"] and (args["runner"] != "cwltool"):
+            logger.critical("Local scratch is only supported with cwltool.")
+            sys.exit(-1)
+        if args["use_node_scratch"]:
+            args["rundir"] = "$TMPDIR"
         config.run_workflow(
             runner=args["runner"],
             scheduler=args["scheduler"],
@@ -790,11 +826,13 @@ def calibrator(
                 "account": args["slurm_account"],
                 "time": args["slurm_time"],
                 "cores": args["slurm_cores"],
+                "memory": args["slurm_memory"],
             },
             workdir=args["rundir"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
             toil_jobstore=args["toil_jobstore"],
+            use_node_scratch=args["use_node_scratch"],
         )
 
 
@@ -989,8 +1027,8 @@ def target(
         Optional[bool], Parameter(help="Output full-resolution data.")
     ] = False,
     solveralgorithm: Annotated[
-        str, Parameter(help="Solver algorithm for DP3 to use.")
-    ] = "directioniterative",
+        Optional[str], Parameter(help="Solver algorithm for DP3 to use.")
+    ] = None,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
@@ -1026,7 +1064,11 @@ def target(
     slurm_cores: Annotated[
         int,
         Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
-    ] = 32,
+    ] = 30,
+    slurm_memory: Annotated[
+        int,
+        Parameter(help="[cwltool] Memory in GB to reserve for the Slurm job."),
+    ] = 128,
     offline_workers: Annotated[
         bool,
         Parameter(help="Indicates that the worker nodes do not have internet access."),
@@ -1043,7 +1085,9 @@ def target(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_target-701783' for data with obsid 701783). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-LINC_target-701783' for data with obsid 701783). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -1067,6 +1111,7 @@ def target(
         "slurm_account",
         "slurm_time",
         "slurm_cores",
+        "slurm_memory",
         "offline_workers",
         "restart",
         "record_toil_stats",
@@ -1089,7 +1134,7 @@ def target(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_LINC_target.json")
+    config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1107,7 +1152,7 @@ def target(
                 model = download_skymodel(
                     config.configdict["msin"][0]["path"], output_dir=args["rundir"]
                 )
-                args["target_skymodel"]["path"] = model
+                args["target_skymodel"] = {"class": "File", "path": model}
         config.run_workflow(
             runner=args["runner"],
             scheduler=args["scheduler"],
@@ -1116,6 +1161,7 @@ def target(
                 "account": args["slurm_account"],
                 "time": args["slurm_time"],
                 "cores": args["slurm_cores"],
+                "memory": args["slurm_memory"],
             },
             workdir=args["rundir"],
             restart=args["restart"],

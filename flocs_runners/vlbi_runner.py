@@ -704,7 +704,7 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_delay-calibration.json")
+    config.save(f"mslist_{config.obsid}_VLBI_delay-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -879,7 +879,7 @@ def dd_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_dd-calibration.json")
+    config.save(f"mslist_{config.obsid}_VLBI_dd-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1023,7 +1023,7 @@ def split_directions(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_split-directions.json")
+    config.save(f"mslist_{config.obsid}_VLBI_split-directions.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1176,7 +1176,7 @@ def setup(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_setup.json")
+    config.save(f"mslist_{config.obsid}_VLBI_setup.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1284,7 +1284,7 @@ def concatenate_flag(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_concatenate-flag.json")
+    config.save(f"mslist_{config.obsid}_VLBI_concatenate-flag.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
@@ -1402,7 +1402,7 @@ def phaseup_concat(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save("mslist_VLBI_phaseup-concat.json")
+    config.save(f"mslist_{config.obsid}_VLBI_phaseup-concat.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
