@@ -1151,13 +1151,16 @@ def target(
                 config.configdict["msin"][0]["path"], args["cal_solutions"]["path"]
             )
             args["cal_solutions"]["path"] = new_h5
+            config.configdict["cal_solutions"] = new_h5
             args["get_RM"] = False
+            config.configdict["get_RM"] = False
             if not args["target_skymodel"]:
                 logger.info("Downloading strating skymodel")
                 model = download_skymodel(
                     config.configdict["msin"][0]["path"], output_dir=args["rundir"]
                 )
                 args["target_skymodel"] = {"class": "File", "path": model}
+                config.configdict["target_skymodel"] = args["target_skymodel"]
         config.run_workflow(
             runner=args["runner"],
             scheduler=args["scheduler"],
