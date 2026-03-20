@@ -66,7 +66,7 @@ class VLBIJSONConfig:
                 logger.critical(
                     f"No MS files found in {mspath} with suffix {ms_suffix}."
                 )
-            sys.exit(-1)
+                sys.exit(-1)
         else:
             logger.info("Found MS {mspath}")
             files = [mspath]
