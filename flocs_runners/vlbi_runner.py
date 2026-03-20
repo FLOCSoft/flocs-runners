@@ -860,14 +860,14 @@ def dd_calibration(
     for source in cat:
         try:
             parsed_input = re.findall(
-                r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}", source["Source_Name"]
+                r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}", source["Source_id"]
             )[0]
         except IndexError:
             newname = ra_dec_to_iltj(source["RA"], source["DEC"])
             logger.info(
-                f"Source {source['Source_Name']} does not adhere to ILTJhhmmss.ss+ddmmss.s convention. It will be renamed to {newname} to avoid matching problems."
+                f"Source {source['Source_id']} does not adhere to ILTJhhmmss.ss+ddmmss.s convention. It will be renamed to {newname} to avoid matching problems."
             )
-            source["Source_Name"] = newname
+            source["Source_id"] = newname
             cat_modified = True
     if cat_modified:
         shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
