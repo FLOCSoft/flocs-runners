@@ -1152,7 +1152,7 @@ def target(
                 config.configdict["msin"][0]["path"], args["cal_solutions"]["path"]
             )
             args["cal_solutions"]["path"] = new_h5
-            config.configdict["cal_solutions"] = new_h5
+            config.configdict["cal_solutions"] = args["cal_solutions"]
             args["get_RM"] = False
             config.configdict["get_RM"] = False
             if not args["target_skymodel"]:
