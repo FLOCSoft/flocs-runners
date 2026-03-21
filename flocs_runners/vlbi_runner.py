@@ -742,7 +742,7 @@ def delay_calibration(
                 shell=True,
                 text=True,
             )
-            vlass_img = glob.glob("VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
+            vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
             if not vlass_img:
                 raise FileNotFoundError
         except subprocess.CalledProcessError:
