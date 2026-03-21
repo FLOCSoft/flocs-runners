@@ -26,6 +26,7 @@ from cyclopts import App, Parameter, Token
 from enum import Enum
 from typing import List, Optional, Tuple, Annotated, Literal
 
+
 class VLBIJSONConfig:
     """Class for generating JSON configuration files to be passed to the VLBI-cwl pipeline."""
 
@@ -526,7 +527,9 @@ def delay_calibration(
         [
             Token(
                 value=os.path.join(
-                    os.environ["VLBI_DATA_ROOT"], "pipeline_config_files", "facetselfcal_config.txt"
+                    os.environ["VLBI_DATA_ROOT"],
+                    "pipeline_config_files",
+                    "facetselfcal_config.txt",
                 )
             )
         ],
@@ -642,6 +645,12 @@ def delay_calibration(
             converter=cwl_file,
         ),
     ] = None,
+    use_vlass: Annotated[
+        bool,
+        Parameter(
+            help="Download a VLASS cutout to use as starting model for the pipeline.",
+        ),
+    ] = True,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
@@ -686,7 +695,9 @@ def delay_calibration(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_delay-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_delay-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -717,6 +728,27 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
+    if (not args["model_image"]) and args["use_vlass"]:
+        if args["do_auto_delay_selection"]:
+            raise NotImplementedError(
+                "Automatically downloading VLASS staring models for auto delay selection is not yet supported."
+            )
+        delay_cat = Table.read(args["delay_calibrator"])
+        delay_ra = delay_cat[0]["RA"]
+        delay_dec = delay_cat[0]["DEC"]
+        try:
+            vlass_download = subprocess.check_output(
+                f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
+                shell=True,
+                text=True,
+            )
+            vlass_img = glob.glob("VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
+            if not vlass_img:
+                raise FileNotFoundError
+        except subprocess.CalledProcessError:
+            logger.warning("VLASS download failed, not providing starting model.")
+        except FileNotFoundError:
+            logger.warning("VLASS image not found, not providing starting model.")
     config.save(f"mslist_{config.obsid}_VLBI_delay-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
@@ -851,7 +883,9 @@ def dd_calibration(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_dd-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_dd-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -1011,7 +1045,9 @@ def split_directions(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_split-dir-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_split-dir-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -1054,9 +1090,10 @@ def split_directions(
             toil_jobstore=args["toil_jobstore"],
         )
 
+
 @app.command()
 def polarization_imaging(
-	mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".ms",
@@ -1069,9 +1106,9 @@ def polarization_imaging(
         Parameter(help="Gaussian taper for shaping the PSF in WSClean"),
     ] = "0.3arcsec",
     image_size: Annotated[
-        Tuple[int,int],
+        Tuple[int, int],
         Parameter(help="Image size in number of pixels [x,y]"),
-    ] = (2000,2000),
+    ] = (2000, 2000),
     num_channels: Annotated[
         Optional[int],
         Parameter(help="The number of channels to image for each Stokes"),
@@ -1090,7 +1127,9 @@ def polarization_imaging(
     ] = 0.3,
     rmtools_output_prefix: Annotated[
         Optional[str],
-        Parameter(help="Prefix for RM-Tools output products. Defaults to Stokes Q basename."),
+        Parameter(
+            help="Prefix for RM-Tools output products. Defaults to Stokes Q basename."
+        ),
     ] = "target",
     rmtools_extra_args: Annotated[
         Optional[str],
@@ -1136,10 +1175,7 @@ def polarization_imaging(
     args = locals()
     logger.info("Generating VLBI polarization-imaging config")
 
-    config = VLBIJSONConfig(
-        args["mspath"],
-        ms_suffix=args["ms_suffix"], outdir=outdir
-    )
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
     unneeded_keys = [
         "mspath",
         "config_only",
@@ -1155,7 +1191,7 @@ def polarization_imaging(
     args_for_linc = args.copy()
 
     for key in unneeded_keys:
-        args_for_linc.pop(key,None)
+        args_for_linc.pop(key, None)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     config.save("mslist_VLBI_polarization-imaging.json")
@@ -1280,7 +1316,9 @@ def setup(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_setup-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_setup-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -1390,7 +1428,9 @@ def concatenate_flag(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_concat-flag-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_concat-flag-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
@@ -1508,7 +1548,9 @@ def phaseup_concat(
     ] = False,
     toil_jobstore: Annotated[
         str,
-        Parameter(help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_phaseup-concat-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."),
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_phaseup-concat-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
     ] = "",
 ):
     args = locals()
