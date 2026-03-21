@@ -736,6 +736,10 @@ def delay_calibration(
         delay_cat = Table.read(args["delay_calibrator"]["path"])
         delay_ra = delay_cat[0]["RA"]
         delay_dec = delay_cat[0]["DEC"]
+        vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
+        if vlass_img:
+            logger.info(f"Found existing VLASS model image {vlass_img[0]}; reusing this.")
+            config.configdict["model_image"] = {"class": "File", "path": os.path.abspath(vlass_img[0])}
         try:
             vlass_download = subprocess.check_output(
                 f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
@@ -745,6 +749,9 @@ def delay_calibration(
             vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
             if not vlass_img:
                 raise FileNotFoundError
+            else:
+                logger.info(f"Found VLASS model image {vlass_img[0]}.")
+                config.configdict["model_image"] = {"class": "File", "path": os.path.abspath(vlass_img[0])}
         except subprocess.CalledProcessError:
             logger.warning("VLASS download failed, not providing starting model.")
         except FileNotFoundError:
