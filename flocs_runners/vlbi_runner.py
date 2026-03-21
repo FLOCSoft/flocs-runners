@@ -733,7 +733,7 @@ def delay_calibration(
             raise NotImplementedError(
                 "Automatically downloading VLASS staring models for auto delay selection is not yet supported."
             )
-        delay_cat = Table.read(args["delay_calibrator"])
+        delay_cat = Table.read(args["delay_calibrator"]["path"])
         delay_ra = delay_cat[0]["RA"]
         delay_dec = delay_cat[0]["DEC"]
         try:
