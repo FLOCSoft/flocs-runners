@@ -738,24 +738,35 @@ def delay_calibration(
         delay_dec = delay_cat[0]["DEC"]
         vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
         if vlass_img:
-            logger.info(f"Found existing VLASS model image {vlass_img[0]}; reusing this.")
-            config.configdict["model_image"] = {"class": "File", "path": os.path.abspath(vlass_img[0])}
-        try:
-            vlass_download = subprocess.check_output(
-                f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
-                shell=True,
-                text=True,
+            logger.info(
+                f"Found existing VLASS model image {vlass_img[0]}; reusing this."
             )
-            vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
-            if not vlass_img:
-                raise FileNotFoundError
-            else:
-                logger.info(f"Found VLASS model image {vlass_img[0]}.")
-                config.configdict["model_image"] = {"class": "File", "path": os.path.abspath(vlass_img[0])}
-        except subprocess.CalledProcessError:
-            logger.warning("VLASS download failed, not providing starting model.")
-        except FileNotFoundError:
-            logger.warning("VLASS image not found, not providing starting model.")
+            config.configdict["model_image"] = {
+                "class": "File",
+                "path": os.path.abspath(vlass_img[0]),
+            }
+        else:
+            try:
+                vlass_download = subprocess.check_output(
+                    f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
+                    shell=True,
+                    text=True,
+                )
+                vlass_img = glob.glob(
+                    f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits"
+                )
+                if not vlass_img:
+                    raise FileNotFoundError
+                else:
+                    logger.info(f"Found VLASS model image {vlass_img[0]}.")
+                    config.configdict["model_image"] = {
+                        "class": "File",
+                        "path": os.path.abspath(vlass_img[0]),
+                    }
+            except subprocess.CalledProcessError:
+                logger.warning("VLASS download failed, not providing starting model.")
+            except FileNotFoundError:
+                logger.warning("VLASS image not found, not providing starting model.")
     config.save(f"mslist_{config.obsid}_VLBI_delay-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
