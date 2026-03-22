@@ -7,9 +7,9 @@ on:
   schedule:
       - cron: "0 0 * * 1"
   push:
-    branches: [ fedora-py3 ]
+    branches: [ main ]
   pull_request:
-    branches: [ fedora-py3 ]
+    branches: [ main ]
 
 jobs:
   build:
