@@ -8,7 +8,6 @@ from .utils import (
     get_prefactor_freqs,
     setup_toil_slurm,
     verify_slurm_environment_toil,
-    verify_toil,
 )
 import glob
 import json
@@ -152,7 +151,7 @@ class VLBIJSONConfig:
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         try:
             logger.info("Tarring log directory to reduce files")
-            tarjob = subprocess.check_output(
+            subprocess.check_output(
                 [
                     "tar",
                     "cf",
@@ -408,7 +407,10 @@ def delay_calibration(
             help="The image catalogue (in FITS or CSV format) containing the target directions.",
             converter=cwl_file,
         ),
-    ] = cwl_file(str, [Token(value="lotss_catalogue.csv")]),
+    ] = cwl_file(
+        str,
+        [Token(value=os.path.abspath("lotss_catalogue.csv"))],
+    ),
     ATeam_skymodel: Annotated[
         Optional[dict],
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
@@ -731,7 +733,7 @@ def dd_calibration(
         Parameter(help="Peak flux (Jy/beam) cut to pre-select sources from catalogue."),
     ] = 0.025,
     model_cache: Annotated[
-        str,
+        Optional[str],
         Parameter(help="Neural network cache directory."),
     ] = None,
     config_only: Annotated[
@@ -812,16 +814,16 @@ def dd_calibration(
 @app.command()
 def split_directions(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
     image_cat: Annotated[
         dict,
         Parameter(
             help="The image catalogue (in FITS or CSV format) containing the target directions.",
             converter=cwl_file,
         ),
-    ] = "lotss_catalogue.csv",
+    ],
+    ms_suffix: Annotated[
+        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
+    ] = ".MS",
     configfile: Annotated[
         Optional[dict],
         Parameter(
@@ -1003,7 +1005,16 @@ def setup(
     ATeam_skymodel: Annotated[
         Optional[dict],
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
-    ] = os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"),
+    ] = cwl_file(
+        str,
+        [
+            Token(
+                value=os.path.join(
+                    os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"
+                )
+            )
+        ],
+    ),
     rm_correction: Annotated[
         Optional[Literal["spinifex", "RMextract"]],
         Parameter(

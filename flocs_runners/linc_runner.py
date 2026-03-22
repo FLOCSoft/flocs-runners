@@ -143,7 +143,7 @@ class LINCJSONConfig:
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         try:
             logger.info("Tarring log directory to reduce files")
-            tarjob = subprocess.check_output(
+            subprocess.check_output(
                 [
                     "tar",
                     "cf",
