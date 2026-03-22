@@ -12,7 +12,6 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 import casacore.tables as ct
 import numpy as np
-import spinifex
 from spinifex import h5parm_tools
 from spinifex.vis_tools import ms_tools
 import structlog

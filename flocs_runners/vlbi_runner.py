@@ -191,7 +191,7 @@ class VLBIJSONConfig:
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         try:
             logger.info("Tarring log directory to reduce files")
-            tarjob = subprocess.check_output(
+            subprocess.check_output(
                 [
                     "tar",
                     "cf",
@@ -487,7 +487,10 @@ def delay_calibration(
             help="The image catalogue (in FITS or CSV format) containing the target directions.",
             converter=cwl_file,
         ),
-    ] = cwl_file(str, [Token(value="lotss_catalogue.csv")]),
+    ] = cwl_file(
+        str,
+        [Token(value=os.path.abspath("lotss_catalogue.csv"))],
+    ),
     ATeam_skymodel: Annotated[
         Optional[dict],
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
@@ -967,16 +970,16 @@ def dd_calibration(
 @app.command()
 def split_directions(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
     image_cat: Annotated[
         dict,
         Parameter(
             help="The image catalogue (in FITS or CSV format) containing the target directions.",
             converter=cwl_file,
         ),
-    ] = "lotss_catalogue.csv",
+    ],
+    ms_suffix: Annotated[
+        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
+    ] = ".MS",
     configfile: Annotated[
         Optional[dict],
         Parameter(
