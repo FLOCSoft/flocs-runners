@@ -470,6 +470,34 @@ def calibrator(
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".MS",
+    use_dnn: Annotated[
+        bool,
+        Parameter(
+            help="Use the deep neural network model to determine demix parameters, if PyTorch is available."
+        ),
+    ] = False,
+    trusted_sources: Annotated[
+        str,
+        Parameter(
+            help="Comma-separated list of trusted calibrator sources. Solutions are only transferred from a reference solution set in case the observed calibrator is not among them."
+        ),
+    ] = "3C48,3C147,3C196,3C295,3C380",
+    remove_phase_wraps: Annotated[
+        bool,
+        Parameter(help="Detect and remove phase wraps in the clock-TEC separation."),
+    ] = True,
+    maxncpu_flag: Annotated[
+        int,
+        Parameter(
+            help="Number of threads used for flagextend step in the bandpass calibration."
+        ),
+    ] = 10,
+    instrument: Annotated[
+        Optional[str],
+        Parameter(
+            help="Specifies the instrument used (only used for smoothing so far, either HBA or LBA)."
+        ),
+    ] = None,
     save_raw_solutions: Annotated[
         bool,
         Parameter(
@@ -603,6 +631,9 @@ def calibrator(
         Parameter(
             help="If true force demixing using all sources of demix_sources, if false do not demix (if null, automatically determines sources to be demixed according to min_separation)."
         ),
+    ] = None,
+    demix_maxiter: Annotated[
+        Optional[int], Parameter(help="Maximum demix iterations.")
     ] = None,
     ion_3rd: Annotated[
         bool,
@@ -927,9 +958,6 @@ def target(
     min_separation: Annotated[
         Optional[int], Parameter(help="Minimum separation.")
     ] = 30,
-    min_probability: Annotated[
-        Optional[float], Parameter(help="Minimum probability.")
-    ] = 0.5,
     A_Team_skymodel: Annotated[
         Optional[dict],
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),

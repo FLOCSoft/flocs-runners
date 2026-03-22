@@ -47,8 +47,13 @@ jobs:
           jq -r 'keys[] as $k | "\($k)"' mslist_unknown_LINC_target.json > keys_flocs_target
           jq -r 'keys[] as $k | "\($k)"' template_linc_calibrator.json > keys_template_calibrator
           jq -r 'keys[] as $k | "\($k)"' template_linc_target.json > keys_template_target
+
+          # Ignore parameters that flocs overrides
           sed -i '/solveralgorithm/d' keys_flocs*
           sed -i '/solveralgorithm/d' keys_template*
+          sed -i '/aoflag_cores/d' keys_flocs*
+          sed -i '/aoflag_cores/d' keys_template*
+
           if [[ $(diff -q keys_template_calibrator keys_flocs_calibrator) ]]; then echo "Keys do not match LINC calibrator" && diff --side-by-side --suppress-common-lines keys_flocs_calibrator keys_template_calibrator && exit 1; fi
           if [[ $(diff -q keys_template_target keys_flocs_target) ]]; then echo "Keys do not match LINC target" && diff --side-by-side --suppress-common-lines keys_flocs_target keys_template_target && exit 1; fi
 
