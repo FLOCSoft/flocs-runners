@@ -878,6 +878,12 @@ def target(
     ms_suffix: Annotated[
         str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
     ] = ".MS",
+    use_dnn: Annotated[
+        bool,
+        Parameter(
+            help="Use the deep neural network model to determine demix parameters, if PyTorch is available."
+        ),
+    ] = False,
     update_version_file: Annotated[
         bool,
         Parameter(help="Overwrite the $LINC_DATA_ROOT/.versions file if it exists."),
