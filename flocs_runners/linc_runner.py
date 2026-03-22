@@ -41,6 +41,7 @@ class LINCJSONConfig:
         prefac_h5parm={"path": ""},
         update_version_file: bool = False,
         outdir: str = os.getcwd(),
+        restart: bool = False,
     ):
         if "LINC_DATA_ROOT" not in os.environ:
             raise ValueError(
@@ -49,11 +50,18 @@ class LINCJSONConfig:
             sys.exit(-1)
         self.configdict = {}
         self.outdir = outdir
+        self.restart = restart
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
+        if restart:
+            try:
+                self.obsid = extract_obsid_from_ms(files[0])
+            except IndexError:
+                self.obsid = "unknown"
+            return
 
         if not prefac_h5parm["path"]:
             mslist = []
