@@ -617,7 +617,7 @@ def calibrator(
         Optional[dict],
         Parameter(
             help="Directory where calibrator skymodels are located.",
-            converter=cwl_file,
+            converter=cwl_dir,
         ),
     ] = cwl_file(
         str, [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"))]
