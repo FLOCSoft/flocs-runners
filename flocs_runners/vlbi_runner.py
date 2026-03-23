@@ -222,11 +222,12 @@ class VLBIJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        logger.info("Copying results")
-        shutil.move(
-            self.rundir,
-            os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}"),
+        outpath = os.path.join(
+            self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}"
         )
+        logger.info(f"Copying results to: {outpath}")
+        shutil.move(self.rundir, outpath)
+        shutil.move(self.rundir, outpath)
 
     def run_workflow(
         self,
@@ -1034,15 +1035,11 @@ def split_directions(
     ] = 0.0,
     frequency_resolution: Annotated[
         str,
-        Parameter(
-            help="Frequency resolution for the split off datasets."
-        ),
+        Parameter(help="Frequency resolution for the split off datasets."),
     ] = "390.56kHz",
     time_resolution: Annotated[
         str,
-        Parameter(
-            help="Time resolution for the split off datasets."
-        ),
+        Parameter(help="Time resolution for the split off datasets."),
     ] = "32",
     config_only: Annotated[
         bool,

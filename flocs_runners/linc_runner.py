@@ -169,14 +169,11 @@ class LINCJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        logger.info(
-            "Copying results to:",
-            os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
+        outpath = os.path.join(
+            self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"
         )
-        shutil.move(
-            self.rundir,
-            os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"),
-        )
+        logger.info(f"Copying results to: {outpath}")
+        shutil.move(self.rundir, outpath)
 
     def run_workflow(
         self,
