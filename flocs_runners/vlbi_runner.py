@@ -1073,6 +1073,12 @@ def split_directions(
         bool,
         Parameter(help="Restart a toil workflow."),
     ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
     toil_jobstore: Annotated[
         str,
         Parameter(
@@ -1200,6 +1206,12 @@ def polarization_imaging(
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
     ] = False,
 ):
     args = locals()
@@ -1343,6 +1355,12 @@ def setup(
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
     ] = False,
     toil_jobstore: Annotated[
         str,
@@ -1575,6 +1593,12 @@ def phaseup_concat(
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
     ] = False,
     toil_jobstore: Annotated[
         str,
