@@ -1032,6 +1032,18 @@ def split_directions(
             help="Peak flux (Jy/beam) cut to pre-select sources from catalogue. Default at 0.0 is no peak flux selection."
         ),
     ] = 0.0,
+    frequency_resolution: Annotated[
+        str,
+        Parameter(
+            help="Frequency resolution for the split off datasets."
+        ),
+    ] = "390.56kHz",
+    time_resolution: Annotated[
+        str,
+        Parameter(
+            help="Time resolution for the split off datasets."
+        ),
+    ] = "32",
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
