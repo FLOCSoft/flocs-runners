@@ -214,11 +214,19 @@ class VLBIJSONConfig:
             logger.info("Removing leftover tmpdirs")
             tempdirs = glob.glob(os.path.join(self.rundir, "tmpdir*"))
             for td in tempdirs:
-                subprocess.check_output(["rm", "-rf", td])
+                try:
+                    subprocess.check_output(["rm", "-rf", td])
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Failed to remove {td} after 30 seconds; perhaps a leftover .cache or .fontconfig being stubborn.")
+                    continue
 
             tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
             for td in tempdirs:
-                subprocess.check_output(["rm", "-rf", td])
+                try:
+                    subprocess.check_output(["rm", "-rf", td])
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Failed to remove {td} after 30 seconds.")
+                    continue
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
