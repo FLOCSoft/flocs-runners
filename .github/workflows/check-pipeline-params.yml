@@ -29,7 +29,7 @@ jobs:
           chmod u+x yq
           pip install uv
           uv pip install --system numpy losoto python-casacore cwltool
-          uv pip install --system git+https://github.com/tikk3r/flocs-runners.git
+          uv pip install --system git+https://github.com/flocsoft/flocs-runners.git
     - name: Generate templates
       run: |
           git clone https://git.astron.nl/RD/LINC.git
