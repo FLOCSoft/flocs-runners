@@ -240,7 +240,9 @@ def obtain_spinifex(ms: str, h5parm: str, backup: bool = True) -> str:
         logger.info(f"Working on copy {h5parm}")
     ms_metadata = ms_tools.get_metadata_from_ms(Path(ms))
     rm = ms_tools.get_rm_from_ms(Path(ms), use_stations=ms_metadata.station_names)
-    h5parm_tools.write_rm_to_h5parm(rms=rm, h5parm_name=h5parm, solset_name="target", soltab_name="spinifex")
+    h5parm_tools.write_rm_to_h5parm(
+        rms=rm, h5parm_name=h5parm, solset_name="target", soltab_name="spinifex"
+    )
     return os.path.abspath(h5parm)
 
 
@@ -306,6 +308,7 @@ def ra_dec_to_iltj(ra_deg, dec_deg):
         f"{sign}{dec_d:02d}{dec_m:02d}{dec_s:04.1f}"
     )
     return source_name
+
 
 def is_ms(ms: str):
     try:

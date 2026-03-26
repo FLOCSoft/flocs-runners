@@ -9,12 +9,14 @@ from .utils import (
     get_prefactor_freqs,
     obtain_spinifex,
     setup_toil_slurm,
+    tune_to_cluster,
     verify_slurm_environment_toil,
     verify_toil,
 )
 import glob
 import json
 import os
+import socket
 import sys
 import structlog
 import shutil
@@ -139,6 +141,18 @@ class LINCJSONConfig:
             logger.warning("Unknown config file passed; exiting.")
             sys.exit(-1)
 
+    def tune_to_cluster(self):
+        host = socket.gethostname().lower()
+        logger.info("Tweaking config for cluster")
+        if "cosma" in host:
+            if "snap8" in self.rundir:
+                logger.info("Detected COSMA snap8:")
+                if self.mode is self.OBS_TYPE.CALIBRATOR:
+                    logger.info(
+                        f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1"
+                    )
+                    self.configdict["max_dp3_threads"] = 1
+
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         try:
@@ -164,7 +178,9 @@ class LINCJSONConfig:
                 try:
                     subprocess.check_output(["rm", "-rf", td], timeout=30)
                 except subprocess.TimeoutExpired:
-                    logger.warning(f"Failed to remove {td} after 30 seconds; perhaps a leftover .cache or .fontconfig being stubborn.")
+                    logger.warning(
+                        f"Failed to remove {td} after 30 seconds; perhaps a leftover .cache or .fontconfig being stubborn."
+                    )
                     continue
 
             tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
@@ -216,6 +232,7 @@ class LINCJSONConfig:
             self.restarting = True
             logger.info(f"Attempting to restart existing workflow from {self.rundir}.")
         self.setup_apptainer_variables(self.rundir)
+        self.tune_to_cluster()
         logger.info(
             f"Running workflow with {runner} under {scheduler} in {self.rundir}"
         )
@@ -922,8 +939,9 @@ def target(
         Optional[float], Parameter(help="Minimum unflagged fraction.")
     ] = 0.5,
     compression_bitrate: Annotated[
-        Optional[int], Parameter(help="Compression bitrate.")
-    ] = 16,
+        Optional[int],
+        Parameter(help="Compression bitrate. Currently defaults to the DP3 default."),
+    ] = 10,
     raw_data: Annotated[Optional[bool], Parameter(help="Use raw data.")] = False,
     propagatesolutions: Annotated[
         Optional[bool], Parameter(help="Propagate calibration solutions.")
@@ -1178,6 +1196,7 @@ def target(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
+        config.configdict = tune_to_cluster(config.configdict, args["rundir"]["path"])
     if args["config_only"]:
         config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
