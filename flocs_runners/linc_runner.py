@@ -9,7 +9,6 @@ from .utils import (
     get_prefactor_freqs,
     obtain_spinifex,
     setup_toil_slurm,
-    tune_to_cluster,
     verify_slurm_environment_toil,
     verify_toil,
 )
