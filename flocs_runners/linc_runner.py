@@ -3,6 +3,7 @@ from .utils import (
     check_dd_freq,
     cwl_file,
     cwl_dir,
+    detect_compute_cluster,
     download_skymodel,
     extract_obsid_from_ms,
     get_container_env_var,
@@ -50,6 +51,7 @@ class LINCJSONConfig:
             sys.exit(-1)
         self.configdict = {}
         self.outdir = outdir
+        self.cluster = detect_compute_cluster()
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
@@ -62,18 +64,14 @@ class LINCJSONConfig:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
                 mslist.append(x)
             self.configdict["msin"] = mslist
-        elif not prefac_h5parm["path"].endswith("h5") and not prefac_h5parm[
-            "path"
-        ].endswith("h5parm"):
+        elif not prefac_h5parm["path"].endswith("h5") and not prefac_h5parm["path"].endswith("h5parm"):
             mslist = []
             for ms in files:
                 x = json.loads(f'{{"class": "Directory", "path":"{ms}"}}')
                 mslist.append(x)
             self.configdict["msin"] = mslist
         else:
-            prefac_freqs = get_prefactor_freqs(
-                solname=prefac_h5parm["path"], solset="calibrator"
-            )
+            prefac_freqs = get_prefactor_freqs(solname=prefac_h5parm["path"], solset="calibrator")
 
             mslist = []
             for dd in files:
@@ -107,9 +105,7 @@ class LINCJSONConfig:
             shell=True,
             text=True,
         )
-        pip_versions = subprocess.check_output(
-            "pip freeze | sed 's/==/: /g'", shell=True
-        )
+        pip_versions = subprocess.check_output("pip freeze | sed 's/==/: /g'", shell=True)
         linc_version_file = os.path.join(os.environ["LINC_DATA_ROOT"], ".versions")
 
         if os.path.isfile(linc_version_file) and not overwrite:
@@ -129,28 +125,40 @@ class LINCJSONConfig:
 
     def setup_rundir(self, workdir):
         if "calibrator" in self.configfile:
-            self.rundir = tempfile.mkdtemp(
-                prefix=f"tmp.LINC_calibrator_{self.obsid}.", dir=workdir
-            )
+            self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_calibrator_{self.obsid}.", dir=workdir)
         elif "target" in self.configfile:
-            self.rundir = tempfile.mkdtemp(
-                prefix=f"tmp.LINC_target_{self.obsid}.", dir=workdir
-            )
+            self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_target_{self.obsid}.", dir=workdir)
         else:
             logger.warning("Unknown config file passed; exiting.")
             sys.exit(-1)
 
-    def tune_to_cluster(self):
-        host = socket.gethostname().lower()
+    def tune_to_cluster(self, runner: str):
         logger.info("Tweaking config for cluster")
-        if "cosma" in host:
+        if self.cluster == "cosma":
             if "snap8" in self.rundir:
-                logger.info("Detected COSMA snap8:")
+                logger.info("Detected COSMA snap8, bombs away:")
                 if self.mode is self.OBS_TYPE.CALIBRATOR:
-                    logger.info(
-                        f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1"
-                    )
+                    logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1")
                     self.configdict["max_dp3_threads"] = 1
+        elif self.cluster == "spider":
+            if os.path.abspath(self.rundir).startswith("/project"):
+                logger.info("Detected Spider /project")
+                if self.mode is self.OBS_TYPE.CALIBRATOR:
+                    if runner == "toil":
+                        logger.warning("Using Toil on Spider is can be a bottleneck on /project or with a busy queue.")
+                        logger.warning("Consider submitting this as a cwltool job instead.")
+                    elif runner == "cwltool" and self.rundir.startswith("/tmp"):
+                        logger.info("We are on local scratch, bombs away")
+                        logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1")
+                        self.configdict["max_dp3_threads"] = 1
+                    elif runner == "cwltool" and self.configdict["scheduler"] == "slurm":
+                        logger.info("We are submitting a Slurm job. Hijacking config with known good settings:")
+                        logger.info(f"slurm-cores {self.configdict['slurm_cores']} -> 32")
+                        logger.info(f"slurm-time {self.configdict['slurm_time']} -> 4:00:00")
+                        logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1")
+                        self.configdict["slurm_cores"] = 32
+                        self.configdict["slurm_time"] = "4:00:00"
+                        self.configdict["max_dp3_threads"] = 1
 
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
@@ -192,9 +200,7 @@ class LINCJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        outpath = os.path.join(
-            self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}"
-        )
+        outpath = os.path.join(self.outdir, f"LINC_{self.mode.value}_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
         shutil.move(self.rundir, outpath)
 
@@ -215,9 +221,7 @@ class LINCJSONConfig:
             self.mode = self.OBS_TYPE.CALIBRATOR
         elif "target" in self.configfile:
             self.mode = self.OBS_TYPE.TARGET
-        elif ("calibrator" not in self.configfile) and (
-            "target" not in self.configfile
-        ):
+        elif ("calibrator" not in self.configfile) and ("target" not in self.configfile):
             raise RuntimeError(
                 "Cannot deduce LINC workflow to run from config file name. Ensure either `calibrator` or `target` is present in the file name."
             )
@@ -231,10 +235,8 @@ class LINCJSONConfig:
             self.restarting = True
             logger.info(f"Attempting to restart existing workflow from {self.rundir}.")
         self.setup_apptainer_variables(self.rundir)
-        self.tune_to_cluster()
-        logger.info(
-            f"Running workflow with {runner} under {scheduler} in {self.rundir}"
-        )
+        self.tune_to_cluster(runner)
+        logger.info(f"Running workflow with {runner} under {scheduler} in {self.rundir}")
 
         if runner == "cwltool":
             cmd = (
@@ -247,25 +249,28 @@ class LINCJSONConfig:
                 + f"--outdir={get_container_env_var('RESULTSDIR')} "
                 + f"--log-dir={get_container_env_var('LOGSDIR')} "
             )
-            cmd += (
-                f"{os.environ['LINC_DATA_ROOT']}/workflows/HBA_{self.mode.value}.cwl "
-            )
+            cmd += f"{os.environ['LINC_DATA_ROOT']}/workflows/HBA_{self.mode.value}.cwl "
             cmd += f"{self.configfile}"
 
             if scheduler == "slurm":
                 wrapped_cmd = add_slurm_skeleton(
                     contents=cmd,
                     job_name=f"LINC_{self.mode.value}",
-                    local_scratch=use_node_scratch,
+                    cluster=self.cluster,
                     **slurm_params,
                 )
-                with open("temp_jobscript.sh", "w") as f:
-                    f.write(wrapped_cmd)
-                logger.info("Written temporary jobscript to temp_jobscript.sh")
-                out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode(
-                    "utf-8"
-                )
-                print(out)
+                if self.cluster == "spider":
+                    with open("temp_jobscript.sh", "w") as f:
+                        f.write(wrapped_cmd)
+                    logger.info("Written temporary jobscript to temp_jobscript.sh")
+                    out = subprocess.check_output(["bash", "temp_jobscript.sh"]).decode("utf-8")
+                    print(out)
+                else:
+                    with open("temp_jobscript.sh", "w") as f:
+                        f.write(wrapped_cmd)
+                    logger.info("Written temporary jobscript to temp_jobscript.sh")
+                    out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+                    print(out)
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 try:
@@ -283,9 +288,7 @@ class LINCJSONConfig:
             verify_toil()
             verify_slurm_environment_toil()
             dir_coordination, dir_slurmlogs = self.setup_toil_directories(self.rundir)
-            is_ceph = "ceph" in subprocess.check_output(
-                ["df", self.rundir]
-            ).lower().decode("utf-8")
+            is_ceph = "ceph" in subprocess.check_output(["df", self.rundir]).lower().decode("utf-8")
             setup_toil_slurm(slurm_params)
             cmd = ["toil-cwl-runner"]
             if scheduler == "slurm":
@@ -315,14 +318,10 @@ class LINCJSONConfig:
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
             jobstore_is_beegfs = False
             if not toil_jobstore:
-                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
-                    ["df", self.rundir]
-                ).lower().decode("utf-8")
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", self.rundir]).lower().decode("utf-8")
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
-                jobstore_is_beegfs = "beegfs" in subprocess.check_output(
-                    ["df", toil_jobstore]
-                ).lower().decode("utf-8")
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", toil_jobstore]).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
             if jobstore_is_beegfs:
                 logger.warning(
@@ -365,41 +364,21 @@ class LINCJSONConfig:
 
     def setup_apptainer_variables(self, workdir):
         try:
-            out = (
-                subprocess.check_output(["singularity", "--version"])
-                .decode("utf-8")
-                .strip()
-            )
+            out = subprocess.check_output(["singularity", "--version"]).decode("utf-8").strip()
         except subprocess.CalledProcessError:
-            out = (
-                subprocess.check_output(["apptainer", "--version"])
-                .decode("utf-8")
-                .strip()
-            )
+            out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
             os.environ["APPTAINERENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["APPTAINERENV_RESULTSDIR"] = (
-                f"{workdir}/results_LINC_{self.mode.value}/"
-            )
-            os.environ["APPTAINERENV_LOGSDIR"] = (
-                f"{workdir}/logs_LINC_{self.mode.value}/"
-            )
-            os.environ["APPTAINERENV_TMPDIR"] = (
-                f"{workdir}/tmpdir_LINC_{self.mode.value}/"
-            )
-            os.environ["APPTAINERENV_PREPEND_PATH"] = (
-                f"{os.environ['LINC_DATA_ROOT']}/scripts"
-            )
-            os.environ["APPTAINERENV_PYTHONPATH"] = (
-                f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
-            )
+            os.environ["APPTAINERENV_RESULTSDIR"] = f"{workdir}/results_LINC_{self.mode.value}/"
+            os.environ["APPTAINERENV_LOGSDIR"] = f"{workdir}/logs_LINC_{self.mode.value}/"
+            os.environ["APPTAINERENV_TMPDIR"] = f"{workdir}/tmpdir_LINC_{self.mode.value}/"
+            os.environ["APPTAINERENV_PREPEND_PATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts"
+            os.environ["APPTAINERENV_PYTHONPATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
             if not self.restarting:
                 os.mkdir(os.environ["APPTAINERENV_LOGSDIR"])
                 os.mkdir(os.environ["APPTAINERENV_TMPDIR"])
                 os.mkdir(os.environ["APPTAINERENV_RESULTSDIR"])
-            os.environ["PATH"] = (
-                os.environ["APPTAINERENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
-            )
+            os.environ["PATH"] = os.environ["APPTAINERENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
@@ -415,29 +394,17 @@ class LINCJSONConfig:
                 )
         elif "singularity" in out:
             os.environ["SINGULARITYENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["SINGULARITYENV_RESULTSDIR"] = (
-                f"{workdir}/results_LINC_{self.mode.value}/"
-            )
-            os.environ["SINGULARITYENV_LOGSDIR"] = (
-                f"{workdir}/logs_LINC_{self.mode.value}/"
-            )
-            os.environ["SINGULARITYENV_TMPDIR"] = (
-                f"{workdir}/tmpdir_LINC_{self.mode.value}/"
-            )
-            os.environ["SINGULARITYENV_PREPEND_PATH"] = (
-                f"{os.environ['LINC_DATA_ROOT']}/scripts"
-            )
+            os.environ["SINGULARITYENV_RESULTSDIR"] = f"{workdir}/results_LINC_{self.mode.value}/"
+            os.environ["SINGULARITYENV_LOGSDIR"] = f"{workdir}/logs_LINC_{self.mode.value}/"
+            os.environ["SINGULARITYENV_TMPDIR"] = f"{workdir}/tmpdir_LINC_{self.mode.value}/"
+            os.environ["SINGULARITYENV_PREPEND_PATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts"
             # Note that cwltool for some reason does not inherit this.
-            os.environ["SINGULARITYENV_PYTHONPATH"] = (
-                f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
-            )
+            os.environ["SINGULARITYENV_PYTHONPATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
             if not self.restarting:
                 os.mkdir(os.environ["SINGULARITYENV_LOGSDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_TMPDIR"])
                 os.mkdir(os.environ["SINGULARITYENV_RESULTSDIR"])
-            os.environ["PATH"] = (
-                os.environ["SINGULARITYENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
-            )
+            os.environ["PATH"] = os.environ["SINGULARITYENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "SINGULARITY_BINDPATH" not in os.environ:
                 os.environ["SINGULARITY_BINDPATH"] = (
                     f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}"
@@ -452,9 +419,7 @@ class LINCJSONConfig:
                     + f",{os.environ['SINGULARITY_BINDPATH']}"
                 )
         if "PYTHONPATH" in os.environ:
-            os.environ["PYTHONPATH"] = (
-                "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
-            )
+            os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
         else:
             os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts"
 
@@ -488,14 +453,10 @@ app = App(group="LOFAR")
 @app.command()
 def calibrator(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     use_dnn: Annotated[
         bool,
-        Parameter(
-            help="Use the deep neural network model to determine demix parameters, if PyTorch is available."
-        ),
+        Parameter(help="Use the deep neural network model to determine demix parameters, if PyTorch is available."),
     ] = False,
     trusted_sources: Annotated[
         str,
@@ -509,21 +470,15 @@ def calibrator(
     ] = True,
     maxncpu_flag: Annotated[
         int,
-        Parameter(
-            help="Number of threads used for flagextend step in the bandpass calibration."
-        ),
+        Parameter(help="Number of threads used for flagextend step in the bandpass calibration."),
     ] = 10,
     instrument: Annotated[
         Optional[str],
-        Parameter(
-            help="Specifies the instrument used (only used for smoothing so far, either HBA or LBA)."
-        ),
+        Parameter(help="Specifies the instrument used (only used for smoothing so far, either HBA or LBA)."),
     ] = None,
     save_raw_solutions: Annotated[
         bool,
-        Parameter(
-            help="Save the intermediate, raw solution tables for (bandpass, faraday, ion, polalign)."
-        ),
+        Parameter(help="Save the intermediate, raw solution tables for (bandpass, faraday, ion, polalign)."),
     ] = True,
     update_version_file: Annotated[
         bool,
@@ -559,9 +514,7 @@ def calibrator(
             help="Assume that together with a delay each station also has a differential phase offset (important for old LBA observatoins)."
         ),
     ] = False,
-    do_smooth: Annotated[
-        bool, Parameter(help="Enable or disable baseline-based smoothing.")
-    ] = False,
+    do_smooth: Annotated[bool, Parameter(help="Enable or disable baseline-based smoothing.")] = False,
     rfistrategy: Annotated[
         Optional[dict],
         Parameter(
@@ -582,9 +535,7 @@ def calibrator(
     ),
     max2interpolate: Annotated[
         int,
-        Parameter(
-            help="Amount of channels in which interpolation should be performed for deriving the bandpass."
-        ),
+        Parameter(help="Amount of channels in which interpolation should be performed for deriving the bandpass."),
     ] = 30,
     ampRange: Annotated[
         Tuple[float, float],
@@ -602,15 +553,11 @@ def calibrator(
     ] = False,
     propagatesolutions: Annotated[
         bool,
-        Parameter(
-            help="Use already derived solutions as initial guess for the upcoming timeslot."
-        ),
+        Parameter(help="Use already derived solutions as initial guess for the upcoming timeslot."),
     ] = True,
     flagunconverged: Annotated[
         bool,
-        Parameter(
-            help="Flag solutions for solves that did not converge (if they were also detected to diverge)."
-        ),
+        Parameter(help="Flag solutions for solves that did not converge (if they were also detected to diverge)."),
     ] = False,
     maxStddev: Annotated[
         float,
@@ -641,26 +588,18 @@ def calibrator(
         "CasA_Gaussian",
         "TauA_Gaussian",
     ],
-    demix_freqres: Annotated[
-        str, Parameter(help="Frequency resolution used when demixing.")
-    ] = "48.82kHz",
-    demix_timeres: Annotated[
-        float, Parameter(help="Time resolution used when demixing.")
-    ] = 10.0,
+    demix_freqres: Annotated[str, Parameter(help="Frequency resolution used when demixing.")] = "48.82kHz",
+    demix_timeres: Annotated[float, Parameter(help="Time resolution used when demixing.")] = 10.0,
     demix: Annotated[
         Optional[bool],
         Parameter(
             help="If true force demixing using all sources of demix_sources, if false do not demix (if null, automatically determines sources to be demixed according to min_separation)."
         ),
     ] = None,
-    demix_maxiter: Annotated[
-        Optional[int], Parameter(help="Maximum demix iterations.")
-    ] = None,
+    demix_maxiter: Annotated[Optional[int], Parameter(help="Maximum demix iterations.")] = None,
     ion_3rd: Annotated[
         bool,
-        Parameter(
-            help="take into account also 3rd-order effects for the clock-TEC separation."
-        ),
+        Parameter(help="take into account also 3rd-order effects for the clock-TEC separation."),
     ] = False,
     clock_smooth: Annotated[
         bool,
@@ -669,14 +608,10 @@ def calibrator(
         ),
     ] = True,
     tables2export: Annotated[str, Parameter()] = "clock",
-    max_dp3_threads: Annotated[
-        int, Parameter(help="Number of threads per process for DP3.")
-    ] = 10,
+    max_dp3_threads: Annotated[int, Parameter(help="Number of threads per process for DP3.")] = 10,
     memoryperc: Annotated[
         int,
-        Parameter(
-            help="Maximum of memory used for aoflagger in raw_flagging mode in percent."
-        ),
+        Parameter(help="Maximum of memory used for aoflagger in raw_flagging mode in percent."),
     ] = 20,
     min_separation: Annotated[int, Parameter()] = 30,
     max_separation_arcmin: Annotated[
@@ -691,9 +626,7 @@ def calibrator(
             help="Directory where calibrator skymodels are located.",
             converter=cwl_dir,
         ),
-    ] = cwl_dir(
-        str, [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"))]
-    ),
+    ] = cwl_dir(str, [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels"))]),
     A_Team_skymodel: Annotated[
         Optional[dict],
         Parameter(
@@ -702,25 +635,15 @@ def calibrator(
         ),
     ] = cwl_file(
         str,
-        [
-            Token(
-                value=os.path.join(
-                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
-                )
-            )
-        ],
+        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"))],
     ),
     avg_timeresolution: Annotated[
         int,
-        Parameter(
-            help="Intermediate time resolution of the data in seconds after averaging."
-        ),
+        Parameter(help="Intermediate time resolution of the data in seconds after averaging."),
     ] = 4,
     avg_freqresolution: Annotated[
         str,
-        Parameter(
-            help="Intermediate frequency resolution of the data in seconds after averaging."
-        ),
+        Parameter(help="Intermediate frequency resolution of the data in seconds after averaging."),
     ] = "48.82kHz",
     bandpass_freqresolution: Annotated[
         str, Parameter(help="Frequency resolution of the bandpass solution table.")
@@ -733,9 +656,7 @@ def calibrator(
     ] = 10,
     lbfgs_robustdof: Annotated[
         int,
-        Parameter(
-            help="For the LBFGS solver: the degrees of freedom (DOF) given to the noise model."
-        ),
+        Parameter(help="For the LBFGS solver: the degrees of freedom (DOF) given to the noise model."),
     ] = 200,
     aoflag_reorder: Annotated[
         bool,
@@ -751,21 +672,15 @@ def calibrator(
     ] = 2000,
     solveralgorithm: Annotated[
         Optional[str],
-        Parameter(
-            help="Solver algorithm for DP3 to use. If not given, use DP3 default."
-        ),
+        Parameter(help="Solver algorithm for DP3 to use. If not given, use DP3 default."),
     ] = None,
     uvlambdamin: Annotated[
         Optional[float],
-        Parameter(
-            help="Minimum uv-distance in units of wavelength to be used during all calibration steps."
-        ),
+        Parameter(help="Minimum uv-distance in units of wavelength to be used during all calibration steps."),
     ] = None,
     uvmmax: Annotated[
         Optional[float],
-        Parameter(
-            help="Maximum uv-distance in metre to be used during all calibration steps."
-        ),
+        Parameter(help="Maximum uv-distance in metre to be used during all calibration steps."),
     ] = None,
     config_only: Annotated[
         bool,
@@ -893,36 +808,22 @@ def calibrator(
 @app.command()
 def target(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    cal_solutions: Annotated[
-        dict, Parameter(help="Calibration solutions file.", converter=cwl_file)
-    ],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    cal_solutions: Annotated[dict, Parameter(help="Calibration solutions file.", converter=cwl_file)],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     use_dnn: Annotated[
         bool,
-        Parameter(
-            help="Use the deep neural network model to determine demix parameters, if PyTorch is available."
-        ),
+        Parameter(help="Use the deep neural network model to determine demix parameters, if PyTorch is available."),
     ] = False,
     update_version_file: Annotated[
         bool,
         Parameter(help="Overwrite the $LINC_DATA_ROOT/.versions file if it exists."),
     ] = False,
     refant: Annotated[Optional[str], Parameter(help="Reference antenna.")] = "CS00.*",
-    flag_baselines: Annotated[
-        Optional[List[str]], Parameter(help="Baselines to flag.")
-    ] = [],
-    process_baselines_target: Annotated[
-        Optional[str], Parameter(help="Target baselines to process.")
-    ] = "[CR]S*&",
-    filter_baselines: Annotated[
-        Optional[str], Parameter(help="Baselines to filter.")
-    ] = "[CR]S*&",
+    flag_baselines: Annotated[Optional[List[str]], Parameter(help="Baselines to flag.")] = [],
+    process_baselines_target: Annotated[Optional[str], Parameter(help="Target baselines to process.")] = "[CR]S*&",
+    filter_baselines: Annotated[Optional[str], Parameter(help="Baselines to filter.")] = "[CR]S*&",
     do_smooth: Annotated[Optional[bool], Parameter(help="Enable smoothing.")] = False,
-    rfistrategy: Annotated[
-        Optional[dict], Parameter(help="RFI strategy file or name.", converter=cwl_file)
-    ] = cwl_file(
+    rfistrategy: Annotated[Optional[dict], Parameter(help="RFI strategy file or name.", converter=cwl_file)] = cwl_file(
         str,
         [
             Token(
@@ -934,89 +835,48 @@ def target(
             )
         ],
     ),
-    min_unflagged_fraction: Annotated[
-        Optional[float], Parameter(help="Minimum unflagged fraction.")
-    ] = 0.5,
+    min_unflagged_fraction: Annotated[Optional[float], Parameter(help="Minimum unflagged fraction.")] = 0.5,
     compression_bitrate: Annotated[
         Optional[int],
         Parameter(help="Compression bitrate. Currently defaults to the DP3 default."),
     ] = 10,
     raw_data: Annotated[Optional[bool], Parameter(help="Use raw data.")] = False,
-    propagatesolutions: Annotated[
-        Optional[bool], Parameter(help="Propagate calibration solutions.")
-    ] = True,
-    maxStddev: Annotated[
-        Optional[float], Parameter(help="Maximum standard deviation.")
-    ] = -1.0,
-    demix_sources: Annotated[
-        Optional[List[str]], Parameter(help="Sources to demix.")
-    ] = ["VirA_Gaussian", "CygA_Gaussian", "CasA_Gaussian", "TauA_Gaussian"],
-    demix_timeres: Annotated[
-        Optional[float], Parameter(help="Demix time resolution.")
-    ] = None,
-    demix_freqres: Annotated[
-        Optional[str], Parameter(help="Demix frequency resolution.")
-    ] = None,
-    demix_maxiter: Annotated[
-        Optional[int], Parameter(help="Maximum demix iterations.")
-    ] = None,
+    propagatesolutions: Annotated[Optional[bool], Parameter(help="Propagate calibration solutions.")] = True,
+    maxStddev: Annotated[Optional[float], Parameter(help="Maximum standard deviation.")] = -1.0,
+    demix_sources: Annotated[Optional[List[str]], Parameter(help="Sources to demix.")] = [
+        "VirA_Gaussian",
+        "CygA_Gaussian",
+        "CasA_Gaussian",
+        "TauA_Gaussian",
+    ],
+    demix_timeres: Annotated[Optional[float], Parameter(help="Demix time resolution.")] = None,
+    demix_freqres: Annotated[Optional[str], Parameter(help="Demix frequency resolution.")] = None,
+    demix_maxiter: Annotated[Optional[int], Parameter(help="Maximum demix iterations.")] = None,
     demix: Annotated[Optional[bool], Parameter(help="Enable demixing.")] = None,
-    apply_tec: Annotated[
-        Optional[bool], Parameter(help="Apply TEC correction.")
-    ] = False,
-    apply_clock: Annotated[
-        Optional[bool], Parameter(help="Apply clock correction.")
-    ] = True,
-    apply_phase: Annotated[
-        Optional[bool], Parameter(help="Apply phase correction.")
-    ] = False,
+    apply_tec: Annotated[Optional[bool], Parameter(help="Apply TEC correction.")] = False,
+    apply_clock: Annotated[Optional[bool], Parameter(help="Apply clock correction.")] = True,
+    apply_phase: Annotated[Optional[bool], Parameter(help="Apply phase correction.")] = False,
     apply_RM: Annotated[Optional[bool], Parameter(help="Apply RM correction.")] = True,
     get_RM: Annotated[Optional[bool], Parameter(help="Estimate RM.")] = True,
-    apply_beam: Annotated[
-        Optional[bool], Parameter(help="Apply beam correction.")
-    ] = True,
-    gsmcal_step: Annotated[
-        Optional[str], Parameter(help="GSM calibration step.")
-    ] = "phase",
+    apply_beam: Annotated[Optional[bool], Parameter(help="Apply beam correction.")] = True,
+    gsmcal_step: Annotated[Optional[str], Parameter(help="GSM calibration step.")] = "phase",
     updateweights: Annotated[Optional[bool], Parameter(help="Update weights.")] = True,
-    max_dp3_threads: Annotated[
-        Optional[int], Parameter(help="Maximum DP3 threads.")
-    ] = 10,
+    max_dp3_threads: Annotated[Optional[int], Parameter(help="Maximum DP3 threads.")] = 10,
     memoryperc: Annotated[Optional[int], Parameter(help="Memory percentage.")] = 20,
-    min_separation: Annotated[
-        Optional[int], Parameter(help="Minimum separation.")
-    ] = 30,
+    min_separation: Annotated[Optional[int], Parameter(help="Minimum separation.")] = 30,
     A_Team_skymodel: Annotated[
         Optional[dict],
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
     ] = cwl_file(
         str,
-        [
-            Token(
-                value=os.path.join(
-                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
-                )
-            )
-        ],
+        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"))],
     ),
-    target_skymodel: Annotated[
-        Optional[dict], Parameter(help="Target sky model.", converter=cwl_file)
-    ] = None,
-    use_target: Annotated[
-        Optional[bool], Parameter(help="Use target sky model.")
-    ] = True,
-    skymodel_source: Annotated[
-        Optional[str], Parameter(help="Skymodel source.")
-    ] = "TGSS",
-    avg_timeresolution: Annotated[
-        Optional[int], Parameter(help="Averaging time resolution.")
-    ] = 4,
-    avg_freqresolution: Annotated[
-        Optional[str], Parameter(help="Averaging frequency resolution.")
-    ] = "48.82kHz",
-    avg_timeresolution_concat: Annotated[
-        Optional[int], Parameter(help="Concat averaging time resolution.")
-    ] = 8,
+    target_skymodel: Annotated[Optional[dict], Parameter(help="Target sky model.", converter=cwl_file)] = None,
+    use_target: Annotated[Optional[bool], Parameter(help="Use target sky model.")] = True,
+    skymodel_source: Annotated[Optional[str], Parameter(help="Skymodel source.")] = "TGSS",
+    avg_timeresolution: Annotated[Optional[int], Parameter(help="Averaging time resolution.")] = 4,
+    avg_freqresolution: Annotated[Optional[str], Parameter(help="Averaging frequency resolution.")] = "48.82kHz",
+    avg_timeresolution_concat: Annotated[Optional[int], Parameter(help="Concat averaging time resolution.")] = 8,
     avg_freqresolution_concat: Annotated[
         Optional[str], Parameter(help="Concat averaging frequency resolution.")
     ] = "97.64kHz",
@@ -1025,9 +885,7 @@ def target(
         Parameter(name="--num-sbs-per-group", help="Number of SBs per group."),
     ] = None,
     calib_nchan: Annotated[Optional[int], Parameter(help="Calibration channels.")] = 1,
-    reference_stationSB: Annotated[
-        Optional[int], Parameter(help="Reference station SB.")
-    ] = None,
+    reference_stationSB: Annotated[Optional[int], Parameter(help="Reference station SB.")] = None,
     clip_sources: Annotated[Optional[List[str]], Parameter(help="Sources to clip.")] = [
         "VirA_Gaussian",
         "CygA_Gaussian",
@@ -1035,61 +893,27 @@ def target(
         "TauA_Gaussian",
     ],
     clipAteam: Annotated[Optional[bool], Parameter(help="Clip A-Team sources.")] = True,
-    lbfgs_historysize: Annotated[
-        Optional[int], Parameter(help="LBFGS history size.")
-    ] = None,
-    lbfgs_robustdof: Annotated[
-        Optional[float], Parameter(help="LBFGS robust DOF.")
-    ] = None,
-    aoflag_reorder: Annotated[
-        Optional[bool], Parameter(help="Reorder AOFlagger.")
-    ] = False,
-    aoflag_chunksize: Annotated[
-        Optional[int], Parameter(help="AOFlagger chunk size.")
-    ] = 2000,
-    aoflag_freqconcat: Annotated[
-        Optional[bool], Parameter(help="AOFlagger frequency concatenation.")
-    ] = True,
-    aoflag_cores: Annotated[
-        Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")
-    ] = 5,
-    selfcal: Annotated[
-        Optional[bool], Parameter(help="Enable self-calibration.")
-    ] = False,
-    selfcal_strategy: Annotated[
-        Optional[str], Parameter(help="Self-calibration strategy.")
-    ] = "HBA",
-    selfcal_hba_imsize: Annotated[
-        Optional[List[int]], Parameter(help="Selfcal HBA image size.")
-    ] = [20000, 20000],
-    hba_uvlambdamin: Annotated[
-        Optional[float], Parameter(help="HBA uv lambda minimum.")
-    ] = 200.0,
+    lbfgs_historysize: Annotated[Optional[int], Parameter(help="LBFGS history size.")] = None,
+    lbfgs_robustdof: Annotated[Optional[float], Parameter(help="LBFGS robust DOF.")] = None,
+    aoflag_reorder: Annotated[Optional[bool], Parameter(help="Reorder AOFlagger.")] = False,
+    aoflag_chunksize: Annotated[Optional[int], Parameter(help="AOFlagger chunk size.")] = 2000,
+    aoflag_freqconcat: Annotated[Optional[bool], Parameter(help="AOFlagger frequency concatenation.")] = True,
+    aoflag_cores: Annotated[Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")] = 5,
+    selfcal: Annotated[Optional[bool], Parameter(help="Enable self-calibration.")] = False,
+    selfcal_strategy: Annotated[Optional[str], Parameter(help="Self-calibration strategy.")] = "HBA",
+    selfcal_hba_imsize: Annotated[Optional[List[int]], Parameter(help="Selfcal HBA image size.")] = [20000, 20000],
+    hba_uvlambdamin: Annotated[Optional[float], Parameter(help="HBA uv lambda minimum.")] = 200.0,
     hba_uvmmax: Annotated[
         Optional[float],
-        Parameter(
-            help="Baselines with a maximum uv-distance in metre when performing phase calibration with HBA."
-        ),
+        Parameter(help="Baselines with a maximum uv-distance in metre when performing phase calibration with HBA."),
     ] = 1e15,
-    selfcal_region: Annotated[
-        Optional[dict], Parameter(help="Selfcal region file.", converter=cwl_file)
-    ] = None,
+    selfcal_region: Annotated[Optional[dict], Parameter(help="Selfcal region file.", converter=cwl_file)] = None,
     chunkduration: Annotated[Optional[float], Parameter(help="Chunk duration.")] = 0.0,
-    wsclean_tmpdir: Annotated[
-        Optional[str], Parameter(help="WSClean temporary directory.")
-    ] = None,
-    make_structure_plot: Annotated[
-        Optional[bool], Parameter(help="Make structure plot.")
-    ] = False,
-    skymodel_fluxlimit: Annotated[
-        Optional[float], Parameter(help="Skymodel flux limit.")
-    ] = None,
-    output_fullres_data: Annotated[
-        Optional[bool], Parameter(help="Output full-resolution data.")
-    ] = False,
-    solveralgorithm: Annotated[
-        Optional[str], Parameter(help="Solver algorithm for DP3 to use.")
-    ] = None,
+    wsclean_tmpdir: Annotated[Optional[str], Parameter(help="WSClean temporary directory.")] = None,
+    make_structure_plot: Annotated[Optional[bool], Parameter(help="Make structure plot.")] = False,
+    skymodel_fluxlimit: Annotated[Optional[float], Parameter(help="Skymodel flux limit.")] = None,
+    output_fullres_data: Annotated[Optional[bool], Parameter(help="Output full-resolution data.")] = False,
+    solveralgorithm: Annotated[Optional[str], Parameter(help="Solver algorithm for DP3 to use.")] = None,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
@@ -1183,9 +1007,7 @@ def target(
     if args_for_linc["output_fullres_data"]:
         logger.info("Full-resolution data requested, updating defaults to:")
         logger.info(f"avg_timeresolution: {args_for_linc['avg_timeresolution']} -> 1")
-        logger.info(
-            f"avg_freqresolution: {args_for_linc['avg_freqresolution']} -> 12.21kHz"
-        )
+        logger.info(f"avg_freqresolution: {args_for_linc['avg_freqresolution']} -> 12.21kHz")
         logger.info(f"filter_baselines: {args_for_linc['filter_baselines']} -> *&")
 
         args_for_linc["avg_timeresolution"] = 1
@@ -1205,18 +1027,14 @@ def target(
         if args["offline_workers"]:
             logger.info("Offline-worker mode requested")
             logger.info("Downloading spinifex corrections")
-            new_h5 = obtain_spinifex(
-                config.configdict["msin"][0]["path"], args["cal_solutions"]["path"]
-            )
+            new_h5 = obtain_spinifex(config.configdict["msin"][0]["path"], args["cal_solutions"]["path"])
             args["cal_solutions"]["path"] = new_h5
             config.configdict["cal_solutions"] = args["cal_solutions"]
             args["get_RM"] = False
             config.configdict["get_RM"] = False
             if not args["target_skymodel"]:
                 logger.info("Downloading strating skymodel")
-                model = download_skymodel(
-                    config.configdict["msin"][0]["path"], output_dir=args["rundir"]
-                )
+                model = download_skymodel(config.configdict["msin"][0]["path"], output_dir=args["rundir"])
                 args["target_skymodel"] = {"class": "File", "path": model}
                 config.configdict["target_skymodel"] = args["target_skymodel"]
         config.save(f"mslist_{config.obsid}_LINC_target.json")

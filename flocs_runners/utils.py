@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import socket
 import subprocess
 import sys
 from packaging.version import Version
@@ -45,9 +46,7 @@ def cwl_dir(type_, tokens: Sequence[Token]) -> Optional[dict]:
     if entry.lower() == "null":
         return None
     else:
-        return json.loads(
-            f'{{"class": "Directory", "path":"{os.path.abspath(entry)}"}}'
-        )
+        return json.loads(f'{{"class": "Directory", "path":"{os.path.abspath(entry)}"}}')
 
 
 def check_dd_freq(msin: str, freq_array: Union[list, np.ndarray]) -> bool:
@@ -89,9 +88,7 @@ def get_dico_freqs(input_dir: str, solnames: str = "killMS.DIS2_full.sols.npz") 
     return freqs
 
 
-def get_prefactor_freqs(
-    solname: str = "solutions.h5", solset: str = "target"
-) -> np.ndarray:
+def get_prefactor_freqs(solname: str = "solutions.h5", solset: str = "target") -> np.ndarray:
     """Extract frequency coverage from LINC solutions.
 
     Args:
@@ -103,9 +100,7 @@ def get_prefactor_freqs(
     sols = h5parm(solname)
     ss = sols.getSolset(solset)
     st_names = ss.getSoltabNames()
-    ph_sol_name = [
-        xx for xx in st_names if ("extract" not in xx) and ("spinifex" not in xx)
-    ][0]
+    ph_sol_name = [xx for xx in st_names if ("extract" not in xx) and ("spinifex" not in xx)][0]
     st = ss.getSoltab(ph_sol_name)
     return st.getAxisValues("freq")
 
@@ -116,9 +111,7 @@ def get_reffreq(msfile: str) -> float:
     Args:
         msfile: input Measurement Set.
     """
-    ss = ("taql 'select REF_FREQUENCY from {:s}::SPECTRAL_WINDOW' > tmp.txt").format(
-        msfile
-    )
+    ss = ("taql 'select REF_FREQUENCY from {:s}::SPECTRAL_WINDOW' > tmp.txt").format(msfile)
     os.system(ss)
     with open("tmp.txt", "r") as (f):
         lines = f.readlines()
@@ -147,13 +140,9 @@ def setup_toil_slurm(slurm_params: dict):
 
 def verify_toil():
     try:
-        toil_version = Version(
-            subprocess.check_output(["toil-cwl-runner", "--version"]).decode("utf-8")
-        )
+        toil_version = Version(subprocess.check_output(["toil-cwl-runner", "--version"]).decode("utf-8"))
         if toil_version < Version("9.0.0"):
-            logger.critical(
-                f"Flocs requires Toil 9 or newer, but found {toil_version}."
-            )
+            logger.critical(f"Flocs requires Toil 9 or newer, but found {toil_version}.")
             sys.exit(-1)
     except CalledProcessError:
         logger.critical("Toil does not seem to be installed.")
@@ -167,34 +156,22 @@ def verify_slurm_environment_toil():
             "CWL_SINGULARITY_CACHE not found in the environment. Ensure it is set to where you have stored `astronrd_linc_latest.sif`."
         )
         failed = True
-    elif not os.path.isfile(
-        os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "astronrd_linc_latest.sif")
-    ):
-        raise FileNotFoundError(
-            "Cannot find astronrd_linc_latest.sif in CWL_SINGULARITY_CACHE."
-        )
+    elif not os.path.isfile(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "astronrd_linc_latest.sif")):
+        raise FileNotFoundError("Cannot find astronrd_linc_latest.sif in CWL_SINGULARITY_CACHE.")
     if "APPTAINER_PULLDIR" not in os.environ:
         logger.critical(
             "APPTAINER_PULLDIR not found in the environment. Ensure it is set to where you have stored `astronrd_linc_latest.sif`."
         )
         failed = True
-    elif not os.path.isfile(
-        os.path.join(os.environ["APPTAINER_PULLDIR"], "astronrd_linc_latest.sif")
-    ):
-        raise FileNotFoundError(
-            "Cannot find astronrd_linc_latest.sif in APPTAINER_PULLDIR."
-        )
+    elif not os.path.isfile(os.path.join(os.environ["APPTAINER_PULLDIR"], "astronrd_linc_latest.sif")):
+        raise FileNotFoundError("Cannot find astronrd_linc_latest.sif in APPTAINER_PULLDIR.")
     if "APPTAINER_CACHEDIR" not in os.environ:
         logger.critical(
             "APPTAINER_CACHEDIR not found in the environment. Ensure it is set to where you have stored `astronrd_linc_latest.sif`."
         )
         failed = True
-    elif not os.path.isfile(
-        os.path.join(os.environ["APPTAINER_CACHEDIR"], "astronrd_linc_latest.sif")
-    ):
-        raise FileNotFoundError(
-            "Cannot find astronrd_linc_latest.sif in APPTAINER_CACHEDIR."
-        )
+    elif not os.path.isfile(os.path.join(os.environ["APPTAINER_CACHEDIR"], "astronrd_linc_latest.sif")):
+        raise FileNotFoundError("Cannot find astronrd_linc_latest.sif in APPTAINER_CACHEDIR.")
     if failed:
         raise RuntimeError("One or more critical environment variables were not set.")
 
@@ -207,21 +184,37 @@ def add_slurm_skeleton(
     queue: str = "",
     account: str = "",
     memory: int = 0,
+    cluster: str = "",
 ):
-    sbatch_line = "#SBATCH "
-    if time:
-        sbatch_line += f"-t {time} "
-    if cores:
-        sbatch_line += f"-c {cores} "
-    if job_name:
-        sbatch_line += f"--job-name {job_name} "
-    if queue:
-        sbatch_line += f"-p {queue} "
-    if account:
-        sbatch_line += f"-A {account} "
-    if memory:
-        sbatch_line += f"--mem {memory}GB "
-    wrapped = f"""#!/bin/bash
+    if cluster == "spider":
+        wrapped = rf"""sbatch <<EOT
+#!/usr/bin/bash
+#SBATCH -N 1 -c {cores} -t {time} -J LINC_calibrator -A {account} -p {queue}
+cd \$TMPDIR
+RUNDIR=\$(mktemp -d -p \$PWD)
+cd \$RUNDIR
+
+flocs-run linc calibrator --runner cwltool --rundir \$PWD --solveralgorithm directioniterative $(realpath $1)
+
+cd \$TMPDIR
+rsync -avP \$RUNDIR/LINC_calib* $(realpath $2)
+rm -rf \$RUNDIR
+"""
+    else:
+        sbatch_line = "#SBATCH "
+        if time:
+            sbatch_line += f"-t {time} "
+        if cores:
+            sbatch_line += f"-c {cores} "
+        if job_name:
+            sbatch_line += f"--job-name {job_name} "
+        if queue:
+            sbatch_line += f"-p {queue} "
+        if account:
+            sbatch_line += f"-A {account} "
+        if memory:
+            sbatch_line += f"--mem {memory}GB "
+        wrapped = f"""#!/bin/bash
 {sbatch_line}
 {contents}
 """
@@ -240,15 +233,11 @@ def obtain_spinifex(ms: str, h5parm: str, backup: bool = True) -> str:
         logger.info(f"Working on copy {h5parm}")
     ms_metadata = ms_tools.get_metadata_from_ms(Path(ms))
     rm = ms_tools.get_rm_from_ms(Path(ms), use_stations=ms_metadata.station_names)
-    h5parm_tools.write_rm_to_h5parm(
-        rms=rm, h5parm_name=h5parm, solset_name="target", soltab_name="spinifex"
-    )
+    h5parm_tools.write_rm_to_h5parm(rms=rm, h5parm_name=h5parm, solset_name="target", soltab_name="spinifex")
     return os.path.abspath(h5parm)
 
 
-def download_skymodel(
-    ms: str, survey: str = "TGSS", output_dir: str = os.getcwd()
-) -> str:
+def download_skymodel(ms: str, survey: str = "TGSS", output_dir: str = os.getcwd()) -> str:
     tab = ct.table(f"{ms}::POINTING")
     name = tab.getcol("NAME")[0]
     filename = os.path.abspath(f"skymodel_LINC_{name}.txt")
@@ -302,11 +291,7 @@ def ra_dec_to_iltj(ra_deg, dec_deg):
     dec_s = coord.dec.dms.s  # Seconds component
 
     # Build the formatted ILTJ string
-    source_name = (
-        f"ILTJ"
-        f"{ra_h:02d}{ra_m:02d}{ra_s:05.2f}"
-        f"{sign}{dec_d:02d}{dec_m:02d}{dec_s:04.1f}"
-    )
+    source_name = f"ILTJ" f"{ra_h:02d}{ra_m:02d}{ra_s:05.2f}" f"{sign}{dec_d:02d}{dec_m:02d}{dec_s:04.1f}"
     return source_name
 
 
@@ -318,3 +303,13 @@ def is_ms(ms: str):
     except RuntimeError:
         # Trying to open an invalid Measurement Set will throw this exception.
         return False
+
+
+def detect_compute_cluster() -> str:
+    host = socket.gethostname().lower()
+    if "spider" in host.lower():
+        return "spider"
+    elif "cosma" in host.lower():
+        return "cosma"
+    else:
+        return "generic"
