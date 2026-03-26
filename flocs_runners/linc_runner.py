@@ -16,7 +16,6 @@ from .utils import (
 import glob
 import json
 import os
-import socket
 import sys
 import structlog
 import shutil
@@ -1017,7 +1016,6 @@ def target(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-        config.configdict = tune_to_cluster(config.configdict, args["rundir"]["path"])
     if args["config_only"]:
         config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
