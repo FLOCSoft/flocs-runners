@@ -234,7 +234,6 @@ class LINCJSONConfig:
             self.restarting = True
             logger.info(f"Attempting to restart existing workflow from {self.rundir}.")
         self.setup_apptainer_variables(self.rundir)
-        self.tune_to_cluster(runner)
         logger.info(f"Running workflow with {runner} under {scheduler} in {self.rundir}")
 
         if runner == "cwltool":
@@ -776,6 +775,7 @@ def calibrator(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
+    config.tune_to_cluster(args["runner"])
     config.save(f"mslist_{config.obsid}_LINC_calibrator.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
@@ -1017,6 +1017,7 @@ def target(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     if args["config_only"]:
+        config.tune_to_cluster(args["runner"])
         config.save(f"mslist_{config.obsid}_LINC_target.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
@@ -1035,6 +1036,7 @@ def target(
                 model = download_skymodel(config.configdict["msin"][0]["path"], output_dir=args["rundir"])
                 args["target_skymodel"] = {"class": "File", "path": model}
                 config.configdict["target_skymodel"] = args["target_skymodel"]
+        config.tune_to_cluster(args["runner"])
         config.save(f"mslist_{config.obsid}_LINC_target.json")
         config.run_workflow(
             runner=args["runner"],
