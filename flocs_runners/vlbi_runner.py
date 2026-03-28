@@ -235,7 +235,6 @@ class VLBIJSONConfig:
         )
         logger.info(f"Copying results to: {outpath}")
         shutil.move(self.rundir, outpath)
-        shutil.move(self.rundir, outpath)
 
     def run_workflow(
         self,
