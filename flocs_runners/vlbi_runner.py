@@ -484,11 +484,11 @@ app = App(group="LOFAR")
 def delay_calibration(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     delay_calibrator: Annotated[
-        dict,
+        Optional[dict],
         Parameter(
             help="A delay calibrator catalogue in CSV format.", converter=cwl_file
         ),
-    ],
+    ] = None,
     image_catalogue: Annotated[
         Optional[dict],
         Parameter(
