@@ -187,7 +187,8 @@ def add_slurm_skeleton(
     cluster: str = "",
 ):
     if cluster == "spider":
-        wrapped = rf"""sbatch <<EOT
+        if "calibrator" in job_name:
+            wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
 #SBATCH -N 1 -c {cores} -t {time} -J LINC_calibrator -A {account} -p {queue}
 cd \$TMPDIR
@@ -199,6 +200,38 @@ flocs-run linc calibrator --runner cwltool --rundir \$PWD --solveralgorithm dire
 cd \$TMPDIR
 rsync -avP \$RUNDIR/LINC_calib* $(realpath $2)
 rm -rf \$RUNDIR
+"""
+        elif "target" in job_name:
+            wrapped = rf"""sbatch <<EOT
+#!/usr/bin/bash
+#SBATCH -N 1 -c {cores} -t {time} -J LINC_target -A {account} -p {queue}
+cd \$TMPDIR
+RUNDIR=\$(mktemp -d -p \$PWD)
+cd \$RUNDIR
+
+flocs-run linc target --runner cwltool --rundir \$PWD --solveralgorithm directioniterative $(realpath $1)
+
+cd \$TMPDIR
+rsync -avP \$RUNDIR/LINC_target* $(realpath $2)
+rm -rf \$RUNDIR
+"""
+        else:
+            sbatch_line = "#SBATCH "
+            if time:
+                sbatch_line += f"-t {time} "
+            if cores:
+                sbatch_line += f"-c {cores} "
+            if job_name:
+                sbatch_line += f"--job-name {job_name} "
+            if queue:
+                sbatch_line += f"-p {queue} "
+            if account:
+                sbatch_line += f"-A {account} "
+            if memory:
+                sbatch_line += f"--mem {memory}GB "
+            wrapped = f"""#!/bin/bash
+{sbatch_line}
+{contents}
 """
     else:
         sbatch_line = "#SBATCH "
