@@ -132,6 +132,8 @@ class LINCJSONConfig:
             sys.exit(-1)
 
     def tune_to_cluster(self, runner: str):
+        if not hasattr(self, "rundir"):
+            self.rundir = os.getcwd()
         logger.info("Tweaking config for cluster")
         if self.cluster == "cosma":
             if "snap8" in self.rundir:
