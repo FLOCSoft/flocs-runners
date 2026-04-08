@@ -186,7 +186,7 @@ def add_slurm_skeleton(
     memory: int = 0,
     cluster: str = "",
 ):
-    if cluster == "spider":
+    if cluster == "spider_disabled":
         if "calibrator" in job_name:
             wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
