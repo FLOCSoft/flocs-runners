@@ -1036,6 +1036,10 @@ def target(
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
     if not args["config_only"]:
+        cluster = detect_compute_cluster()
+        if cluster == "cosma":
+            logger.info("Detected COSMA, automatically setting offline worker mode.")
+            args["offline_workers"] = True
         if args["offline_workers"]:
             logger.info("Offline-worker mode requested")
             logger.info("Downloading spinifex corrections")
