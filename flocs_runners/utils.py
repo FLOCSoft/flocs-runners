@@ -186,7 +186,7 @@ def add_slurm_skeleton(
     memory: int = 0,
     cluster: str = "",
 ):
-    if cluster == "spider_disabled":
+    if cluster == "spider":
         if "calibrator" in job_name:
             wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
@@ -200,6 +200,7 @@ flocs-run linc calibrator --runner cwltool --rundir \$PWD --solveralgorithm dire
 cd \$TMPDIR
 rsync -avP \$RUNDIR/LINC_calib* $(realpath $2)
 rm -rf \$RUNDIR
+EOT
 """
         elif "target" in job_name:
             wrapped = rf"""sbatch <<EOT
