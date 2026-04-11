@@ -64,17 +64,14 @@ class VLBIJSONConfig:
             if files:
                 logger.info(f"Found {len(files)} files")
             else:
-                logger.critical(
-                    f"No MS files found in {mspath} with suffix {ms_suffix}."
-                )
+                logger.critical(f"No MS files found in {mspath} with suffix {ms_suffix}.")
                 sys.exit(-1)
         else:
             logger.info("Found MS {mspath}")
             files = [mspath]
 
         if (not prefac_h5parm) or (
-            not prefac_h5parm["path"].endswith("h5")
-            and not prefac_h5parm["path"].endswith("h5parm")
+            not prefac_h5parm["path"].endswith("h5") and not prefac_h5parm["path"].endswith("h5parm")
         ):
             mslist = []
             for ms in files:
@@ -83,9 +80,7 @@ class VLBIJSONConfig:
             self.configdict["msin"] = mslist
 
         else:
-            prefac_freqs = get_prefactor_freqs(
-                solname=prefac_h5parm["path"], solset="target"
-            )
+            prefac_freqs = get_prefactor_freqs(solname=prefac_h5parm["path"], solset="target")
 
             mslist = []
             for dd in files:
@@ -109,14 +104,8 @@ class VLBIJSONConfig:
                 short_name = "_".join(os.path.basename(ms["path"]).split("_")[:2])
                 if short_name not in ddf_names_short:
                     idx_nosols.add(idx)
-                    logger.info(
-                        f"Removing {os.path.basename(ms['path'])} because no ddf-pipeline solutions"
-                    )
-            self.configdict["msin"] = [
-                ms
-                for i, ms in enumerate(self.configdict["msin"])
-                if i not in idx_nosols
-            ]
+                    logger.info(f"Removing {os.path.basename(ms['path'])} because no ddf-pipeline solutions")
+            self.configdict["msin"] = [ms for i, ms in enumerate(self.configdict["msin"]) if i not in idx_nosols]
 
         try:
             self.obsid = extract_obsid_from_ms(self.configdict["msin"][0]["path"])
@@ -140,9 +129,7 @@ class VLBIJSONConfig:
             shell=True,
             text=True,
         )
-        pip_versions = subprocess.check_output(
-            "pip freeze | sed 's/==/: /g'", shell=True
-        )
+        pip_versions = subprocess.check_output("pip freeze | sed 's/==/: /g'", shell=True)
         linc_version_file = os.path.join(os.environ["LINC_DATA_ROOT"], ".versions")
 
         if os.path.isfile(linc_version_file) and not overwrite:
@@ -161,9 +148,7 @@ class VLBIJSONConfig:
         self.configfile = fname
 
     def setup_rundir(self, workdir):
-        self.rundir = tempfile.mkdtemp(
-            prefix=f"tmp.VLBI_{self.mode.value}.", dir=workdir
-        )
+        self.rundir = tempfile.mkdtemp(prefix=f"tmp.VLBI_{self.mode.value}.", dir=workdir)
 
     def deduce_pipeline_mode(self):
         if self.configfile is None:
@@ -183,9 +168,7 @@ class VLBIJSONConfig:
         elif "phaseup-concat" in self.configfile:
             self.mode = self.OBS_TYPE.PHASEUP_CONCAT
         else:
-            raise RuntimeError(
-                "Failed to deduce workflow from config file. Is it named correctly?"
-            )
+            raise RuntimeError("Failed to deduce workflow from config file. Is it named correctly?")
 
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
@@ -200,9 +183,7 @@ class VLBIJSONConfig:
                 ]
             )
             logger.info("Removing log directory")
-            subprocess.check_output(
-                ["rm", "-r", os.path.join(self.rundir, f"logs_VLBI_{self.mode.value}")]
-            )
+            subprocess.check_output(["rm", "-r", os.path.join(self.rundir, f"logs_VLBI_{self.mode.value}")])
 
             tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
             for td in tempdirs:
@@ -217,7 +198,9 @@ class VLBIJSONConfig:
                 try:
                     subprocess.check_output(["rm", "-rf", td])
                 except subprocess.TimeoutExpired:
-                    logger.warning(f"Failed to remove {td} after 30 seconds; perhaps a leftover .cache or .fontconfig being stubborn.")
+                    logger.warning(
+                        f"Failed to remove {td} after 30 seconds; perhaps a leftover .cache or .fontconfig being stubborn."
+                    )
                     continue
 
             tempdirs = glob.glob(os.path.join(self.rundir, "toilwf-*"))
@@ -230,9 +213,7 @@ class VLBIJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        outpath = os.path.join(
-            self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}"
-        )
+        outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
         shutil.move(self.rundir, outpath)
 
@@ -255,9 +236,7 @@ class VLBIJSONConfig:
             self.rundir = workdir
             logger.info(f"Attempting to restart existing workflow from {self.rundir}.")
         self.setup_apptainer_variables(self.rundir)
-        logger.info(
-            f"Running workflow with {runner} under {scheduler} in {self.rundir}"
-        )
+        logger.info(f"Running workflow with {runner} under {scheduler} in {self.rundir}")
 
         if runner == "cwltool":
             cmd = (
@@ -282,9 +261,7 @@ class VLBIJSONConfig:
                 with open("temp_jobscript.sh", "w") as f:
                     f.write(wrapped_cmd)
                 logger.info("Written temporary jobscript to temp_jobscript.sh")
-                out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode(
-                    "utf-8"
-                )
+                out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 out = subprocess.check_output(cmd.split(" ")).decode("utf-8")
@@ -292,9 +269,7 @@ class VLBIJSONConfig:
         elif runner == "toil":
             verify_slurm_environment_toil()
             dir_coordination, dir_slurmlogs = self.setup_toil_directories(self.rundir)
-            is_ceph = "ceph" in subprocess.check_output(
-                ["df", self.rundir]
-            ).lower().decode("utf-8")
+            is_ceph = "ceph" in subprocess.check_output(["df", self.rundir]).lower().decode("utf-8")
             setup_toil_slurm(slurm_params)
             cmd = ["toil-cwl-runner"]
             if scheduler == "slurm":
@@ -320,9 +295,7 @@ class VLBIJSONConfig:
             cmd += ["--writeLogsFromAllJobs", "True"]
             cmd += [
                 "--logFile",
-                os.path.join(
-                    self.rundir, f"full_log_{self.mode.value}_{self.obsid}.log"
-                ),
+                os.path.join(self.rundir, f"full_log_{self.mode.value}_{self.obsid}.log"),
             ]
             cmd += ["--writeLogs", get_container_env_var("LOGSDIR")]
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
@@ -345,11 +318,7 @@ class VLBIJSONConfig:
             ]
             cmd += ["--no-compute-checksum"]
             cmd += ["--moveOutputs", "True"]
-            cmd += [
-                os.path.join(
-                    os.environ["VLBI_DATA_ROOT"], "workflows", f"{self.mode.value}.cwl"
-                )
-            ]
+            cmd += [os.path.join(os.environ["VLBI_DATA_ROOT"], "workflows", f"{self.mode.value}.cwl")]
             cmd += [self.configfile]
             try:
                 out = subprocess.check_output(cmd)
@@ -365,29 +334,15 @@ class VLBIJSONConfig:
 
     def setup_apptainer_variables(self, workdir):
         try:
-            out = (
-                subprocess.check_output(["singularity", "--version"])
-                .decode("utf-8")
-                .strip()
-            )
+            out = subprocess.check_output(["singularity", "--version"]).decode("utf-8").strip()
         except subprocess.CalledProcessError:
-            out = (
-                subprocess.check_output(["apptainer", "--version"])
-                .decode("utf-8")
-                .strip()
-            )
+            out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
             os.environ["APPTAINERENV_VLBI_DATA_ROOT"] = os.environ["VLBI_DATA_ROOT"]
             os.environ["APPTAINERENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["APPTAINERENV_RESULTSDIR"] = (
-                f"{workdir}/results_VLBI_{self.mode.value}/"
-            )
-            os.environ["APPTAINERENV_LOGSDIR"] = (
-                f"{workdir}/logs_VLBI_{self.mode.value}/"
-            )
-            os.environ["APPTAINERENV_TMPDIR"] = (
-                f"{workdir}/tmpdir_VLBI_{self.mode.value}/"
-            )
+            os.environ["APPTAINERENV_RESULTSDIR"] = f"{workdir}/results_VLBI_{self.mode.value}/"
+            os.environ["APPTAINERENV_LOGSDIR"] = f"{workdir}/logs_VLBI_{self.mode.value}/"
+            os.environ["APPTAINERENV_TMPDIR"] = f"{workdir}/tmpdir_VLBI_{self.mode.value}/"
             os.environ["APPTAINERENV_PREPEND_PATH"] = (
                 f"{os.environ['VLBI_DATA_ROOT']}/scripts:{os.environ['LINC_DATA_ROOT']}/scripts"
             )
@@ -411,15 +366,9 @@ class VLBIJSONConfig:
         elif "singularity" in out:
             os.environ["SINGULARITYENV_VLBI_DATA_ROOT"] = os.environ["VLBI_DATA_ROOT"]
             os.environ["SINGULARITYENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["SINGULARITYENV_RESULTSDIR"] = (
-                f"{workdir}/results_VLBI_{self.mode.value}/"
-            )
-            os.environ["SINGULARITYENV_LOGSDIR"] = (
-                f"{workdir}/logs_VLBI_{self.mode.value}/"
-            )
-            os.environ["SINGULARITYENV_TMPDIR"] = (
-                f"{workdir}/tmpdir_VLBI_{self.mode.value}/"
-            )
+            os.environ["SINGULARITYENV_RESULTSDIR"] = f"{workdir}/results_VLBI_{self.mode.value}/"
+            os.environ["SINGULARITYENV_LOGSDIR"] = f"{workdir}/logs_VLBI_{self.mode.value}/"
+            os.environ["SINGULARITYENV_TMPDIR"] = f"{workdir}/tmpdir_VLBI_{self.mode.value}/"
             os.environ["SINGULARITYENV_PREPEND_PATH"] = (
                 f"{os.environ['VLBI_DATA_ROOT']}/scripts:{os.environ['LINC_DATA_ROOT']}/scripts"
             )
@@ -441,18 +390,12 @@ class VLBIJSONConfig:
                     + f",{os.environ['SINGULARITY_BINDPATH']}"
                 )
         if "PYTHONPATH" in os.environ:
-            os.environ["PYTHONPATH"] = (
-                "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
-            )
-            os.environ["PYTHONPATH"] = (
-                "$VLBI_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
-            )
+            os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
+            os.environ["PYTHONPATH"] = "$VLBI_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
         else:
             os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts"
             os.environ["PYTHONPATH"] = "$VLBI_DATA_ROOT/scripts"
-        os.environ["PATH"] = (
-            get_container_env_var("PREPEND_PATH") + ":" + os.environ["PATH"]
-        )
+        os.environ["PATH"] = get_container_env_var("PREPEND_PATH") + ":" + os.environ["PATH"]
 
     def setup_toil_directories(self, workdir: str) -> tuple[str, str]:
         dir_coordination = os.path.join(workdir, "coordination")
@@ -485,9 +428,7 @@ def delay_calibration(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     delay_calibrator: Annotated[
         Optional[dict],
-        Parameter(
-            help="A delay calibrator catalogue in CSV format.", converter=cwl_file
-        ),
+        Parameter(help="A delay calibrator catalogue in CSV format.", converter=cwl_file),
     ] = None,
     image_catalogue: Annotated[
         Optional[dict],
@@ -504,28 +445,14 @@ def delay_calibration(
         Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
     ] = cwl_file(
         str,
-        [
-            Token(
-                value=os.path.join(
-                    os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"
-                )
-            )
-        ],
+        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"))],
     ),
     rfi_strategy: Annotated[
         Optional[dict],
-        Parameter(
-            help="File path to the strategy file for AOFlagger.", converter=cwl_file
-        ),
+        Parameter(help="File path to the strategy file for AOFlagger.", converter=cwl_file),
     ] = cwl_file(
         str,
-        [
-            Token(
-                value=os.path.join(
-                    os.environ["LINC_DATA_ROOT"], "rfistrategies/lofar-hba-wideband.lua"
-                )
-            )
-        ],
+        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "rfistrategies/lofar-hba-wideband.lua"))],
     ),
     configfile: Annotated[
         Optional[dict],
@@ -545,9 +472,7 @@ def delay_calibration(
             )
         ],
     ),
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     solset: Annotated[
         Optional[dict],
         Parameter(
@@ -561,31 +486,21 @@ def delay_calibration(
     ] = "*&",
     flag_baselines: Annotated[
         Optional[List[str]],
-        Parameter(
-            help="The baselines to be flagged by DP3. Can be a pattern, e.g. [ CS013HBA*&&* ]."
-        ),
+        Parameter(help="The baselines to be flagged by DP3. Can be a pattern, e.g. [ CS013HBA*&&* ]."),
     ] = None,
     phasesol: Annotated[
         Optional[str],
-        Parameter(
-            help="The name of the target solution table to use from the solset input."
-        ),
+        Parameter(help="The name of the target solution table to use from the solset input."),
     ] = "TGSSphase",
     reference_stationSB: Annotated[
         Optional[int],
-        Parameter(
-            help="Subbands are concatenated in the concatenate-flag workflow relative to this station subband."
-        ),
+        Parameter(help="Subbands are concatenated in the concatenate-flag workflow relative to this station subband."),
     ] = 104,
     number_cores: Annotated[
         Optional[int],
-        Parameter(
-            help="Number of cores to use per job for tasks with high I/O or memory."
-        ),
+        Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
     ] = 12,
-    max_dp3_threads: Annotated[
-        Optional[int], Parameter(help="The number of threads per DP3 process.")
-    ] = 5,
+    max_dp3_threads: Annotated[Optional[int], Parameter(help="The number of threads per DP3 process.")] = 5,
     ddf_solsdir: Annotated[
         Optional[dict],
         Parameter(
@@ -614,9 +529,7 @@ def delay_calibration(
     ] = 0.5,
     do_subtraction: Annotated[
         Optional[bool],
-        Parameter(
-            help="When set to true, the LoTSS model will be subtracted from the DDF corrected data."
-        ),
+        Parameter(help="When set to true, the LoTSS model will be subtracted from the DDF corrected data."),
     ] = False,
     do_validation: Annotated[
         Optional[bool],
@@ -641,9 +554,7 @@ def delay_calibration(
     ] = None,
     do_auto_delay_selection: Annotated[
         Optional[bool],
-        Parameter(
-            help="Automatically select the best candidate delay calibrator(s) based on phasediff scores."
-        ),
+        Parameter(help="Automatically select the best candidate delay calibrator(s) based on phasediff scores."),
     ] = False,
     select_best_n_delay_calibrators: Annotated[
         Optional[int],
@@ -652,8 +563,9 @@ def delay_calibration(
     starting_skymodel: Annotated[
         Optional[list[dict]],
         Parameter(
-            help="Optional starting models in BBS-compatible text format for starting delay calibration.",
+            help="Optional starting models in BBS-compatible text format for starting delay calibration. Supports glob patterns.",
             converter=cwl_file,
+            consume_multiple=True,
         ),
     ] = None,
     use_vlass: Annotated[
@@ -749,9 +661,7 @@ def delay_calibration(
         delay_dec = delay_cat[0]["DEC"]
         vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
         if vlass_img:
-            logger.info(
-                f"Found existing VLASS model image {vlass_img[0]}; reusing this."
-            )
+            logger.info(f"Found existing VLASS model image {vlass_img[0]}; reusing this.")
             config.configdict["model_image"] = {
                 "class": "File",
                 "path": os.path.abspath(vlass_img[0]),
@@ -763,9 +673,7 @@ def delay_calibration(
                     shell=True,
                     text=True,
                 )
-                vlass_img = glob.glob(
-                    f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits"
-                )
+                vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
                 if not vlass_img:
                     raise FileNotFoundError
                 else:
@@ -799,6 +707,134 @@ def delay_calibration(
 
 
 @app.command()
+def process_ddf(
+    msin: Annotated[
+        list[dict], Parameter(converter=cwl_dir, help="Input data from which the LoTSS skymodel will be subtracted.")
+    ],
+    solsdir: Annotated[
+        dict, Parameter(converter=cwl_dir, help="Path to the SOLSDIR directory of the DDF-pipeline run.")
+    ],
+    ddf_rundir: Annotated[
+        dict, Parameter(converter=cwl_dir, help="Directory containing the output from DDF-pipeline.")
+    ],
+    box_size: Annotated[
+        Optional[float],
+        Parameter(
+            help="Side length of a square box in degrees. The LoTSS skymodel is subtracted outside of this box. Defaults to 2.5 degrees."
+        ),
+    ] = 2.5,
+    freqavg: Annotated[
+        Optional[int],
+        Parameter(
+            help="Number of frequency channels to average after the subtract has been performed. Defaults to 1 (no averaging)."
+        ),
+    ] = 1,
+    timeavg: Annotated[
+        Optional[int],
+        Parameter(
+            help="Number of time slots to average after the subtract has been performed. Defaults to 1 (no averaging)."
+        ),
+    ] = 1,
+    ncpu: Annotated[Optional[int], Parameter(help="Number of cores to use during the subtract. Defaults to 24.")] = 24,
+    chunkhours: Annotated[
+        Optional[float],
+        Parameter(
+            help="The range of time to predict the model for at once. Lowering this value reduces memory footprint, but can increase runtime."
+        ),
+    ] = None,
+    do_subtraction: Annotated[
+        bool, Parameter(help="When set to true, the LoTSS model will be subtracted from the DDF corrected data.")
+    ] = False,
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "72:00:00",
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_delay-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
+    ] = "",
+):
+    args = locals()
+    logger.info("Generating VLBI process-ddf config")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
+    unneeded_keys = [
+        "mspath",
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "record_toil_stats",
+        "toil_jobstore",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_process-ddf.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
 def dd_calibration(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     source_catalogue: Annotated[
@@ -808,9 +844,7 @@ def dd_calibration(
             converter=cwl_file,
         ),
     ],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     delay_solset: Annotated[
         Optional[dict],
         Parameter(
@@ -827,9 +861,7 @@ def dd_calibration(
     ] = None,
     max_dp3_threads: Annotated[
         Optional[int],
-        Parameter(
-            help="Number of cores to use per job for tasks with high I/O or memory."
-        ),
+        Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
     ] = 4,
     numbands: Annotated[
         Optional[int],
@@ -837,15 +869,11 @@ def dd_calibration(
     ] = -1,
     truncateLastSBs: Annotated[
         Optional[bool],
-        Parameter(
-            help="Whether to truncate the last subbands of the MSs to the same length."
-        ),
+        Parameter(help="Whether to truncate the last subbands of the MSs to the same length."),
     ] = True,
     dd_selection: Annotated[
         Optional[bool],
-        Parameter(
-            help="If set to true the pipeline will perform direction-dependent calibrator selection."
-        ),
+        Parameter(help="If set to true the pipeline will perform direction-dependent calibrator selection."),
     ] = True,
     phasediff_score: Annotated[
         float,
@@ -922,9 +950,7 @@ def dd_calibration(
     cat_modified = False
     for source in cat:
         try:
-            parsed_input = re.findall(
-                r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}", source["Source_id"]
-            )[0]
+            parsed_input = re.findall(r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}", source["Source_id"])[0]
         except IndexError:
             newname = ra_dec_to_iltj(source["RA"], source["DEC"])
             logger.info(
@@ -985,9 +1011,7 @@ def split_directions(
             converter=cwl_file,
         ),
     ],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     configfile: Annotated[
         Optional[dict],
         Parameter(
@@ -1004,9 +1028,7 @@ def split_directions(
     ] = None,
     max_dp3_threads: Annotated[
         Optional[int],
-        Parameter(
-            help="Number of cores to use per job for tasks with high I/O or memory."
-        ),
+        Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
     ] = 4,
     numbands: Annotated[
         Optional[int],
@@ -1014,9 +1036,7 @@ def split_directions(
     ] = -1,
     truncateLastSBs: Annotated[
         Optional[bool],
-        Parameter(
-            help="Whether to truncate the last subbands of the MSs to the same length."
-        ),
+        Parameter(help="Whether to truncate the last subbands of the MSs to the same length."),
     ] = True,
     do_selfcal: Annotated[
         Optional[bool],
@@ -1024,9 +1044,7 @@ def split_directions(
     ] = False,
     dd_selection: Annotated[
         Optional[bool],
-        Parameter(
-            help="If set to true the pipeline will perform direction-dependent calibrator selection."
-        ),
+        Parameter(help="If set to true the pipeline will perform direction-dependent calibrator selection."),
     ] = False,
     phasediff_score: Annotated[
         float,
@@ -1137,9 +1155,7 @@ def split_directions(
 @app.command()
 def polarization_imaging(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".ms",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".ms",
     pixel_scale: Annotated[
         Optional[str],
         Parameter(help="Pixel sampling for imaging in WSClean"),
@@ -1170,9 +1186,7 @@ def polarization_imaging(
     ] = 0.3,
     rmtools_output_prefix: Annotated[
         Optional[str],
-        Parameter(
-            help="Prefix for RM-Tools output products. Defaults to Stokes Q basename."
-        ),
+        Parameter(help="Prefix for RM-Tools output products. Defaults to Stokes Q basename."),
     ] = "target",
     rmtools_extra_args: Annotated[
         Optional[str],
@@ -1268,36 +1282,26 @@ def setup(
             converter=cwl_file,
         ),
     ],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     filter_baselines: Annotated[
         Optional[str],
         Parameter(help="The default filter constraints for the dp3_prep_target step."),
     ] = "*&",
     flag_baselines: Annotated[
         Optional[List[str]],
-        Parameter(
-            help="The baselines to be flagged by DP3. Can be a pattern, e.g. [ CS013HBA*&&* ]."
-        ),
+        Parameter(help="The baselines to be flagged by DP3. Can be a pattern, e.g. [ CS013HBA*&&* ]."),
     ] = None,
     phasesol: Annotated[
         Optional[str],
-        Parameter(
-            help="The name of the target solution table to use from the solset input."
-        ),
+        Parameter(help="The name of the target solution table to use from the solset input."),
     ] = "TGSSphase",
     min_separation: Annotated[
         Optional[int],
-        Parameter(
-            help="The minimal accepted angular distance to an A-team source on the sky in degrees."
-        ),
+        Parameter(help="The minimal accepted angular distance to an A-team source on the sky in degrees."),
     ] = 30,
     number_cores: Annotated[
         Optional[int],
-        Parameter(
-            help="The minimum number of cores that should be available for steps that require high I/O."
-        ),
+        Parameter(help="The minimum number of cores that should be available for steps that require high I/O."),
     ] = 12,
     max_dp3_threads: Annotated[
         Optional[int],
@@ -1305,9 +1309,7 @@ def setup(
     ] = 5,
     clip_sources: Annotated[
         Optional[List[str]],
-        Parameter(
-            help="The patches of sources that should be flagged. These should be present in the LINC skymodel."
-        ),
+        Parameter(help="The patches of sources that should be flagged. These should be present in the LINC skymodel."),
     ] = ["VirA_Gaussian", "CygA_Gaussian", "CasA_Gaussian", "TauA_Gaussian"],
     ATeam_skymodel: Annotated[
         Optional[dict],
@@ -1317,13 +1319,7 @@ def setup(
         ),
     ] = cwl_file(
         str,
-        [
-            Token(
-                value=os.path.join(
-                    os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"
-                )
-            )
-        ],
+        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels", "A-Team.skymodel"))],
     ),
     rm_correction: Annotated[
         Optional[Literal["spinifex", "RMextract"]],
@@ -1422,26 +1418,18 @@ def setup(
 @app.command()
 def concatenate_flag(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     numbands: Annotated[
         Optional[int],
-        Parameter(
-            help="The number of files that have to be grouped together in frequency."
-        ),
+        Parameter(help="The number of files that have to be grouped together in frequency."),
     ] = 10,
     firstSB: Annotated[
         Optional[int],
-        Parameter(
-            help="If set, reference the grouping of files to this station subband."
-        ),
+        Parameter(help="If set, reference the grouping of files to this station subband."),
     ] = None,
     max_dp3_threads: Annotated[
         Optional[int],
-        Parameter(
-            help="The maximum number of threads that DP3 should use per process."
-        ),
+        Parameter(help="The maximum number of threads that DP3 should use per process."),
     ] = 5,
     aoflagger_memory_fraction: Annotated[
         Optional[int],
@@ -1546,18 +1534,14 @@ def phaseup_concat(
             converter=cwl_file,
         ),
     ],
-    ms_suffix: Annotated[
-        str, Parameter(help="Extension to look for when searching `mspath` for MSes.")
-    ] = ".MS",
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     numbands: Annotated[
         Optional[int],
         Parameter(help="The number of files that have to be grouped together."),
     ] = -1,
     firstSB: Annotated[
         Optional[int],
-        Parameter(
-            help="If set, reference the grouping of files to this station subband."
-        ),
+        Parameter(help="If set, reference the grouping of files to this station subband."),
     ] = None,
     max_dp3_threads: Annotated[
         Optional[int],
@@ -1565,9 +1549,7 @@ def phaseup_concat(
     ] = 5,
     number_cores: Annotated[
         Optional[int],
-        Parameter(
-            help="Number of cores to use per job for tasks with high I/O or memory."
-        ),
+        Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
     ] = 12,
     config_only: Annotated[
         bool,

@@ -27,15 +27,22 @@ def extract_obsid_from_ms(ms: str) -> str:
     return os.path.basename(ms).split("_")[0].lstrip("L")
 
 
-def cwl_file(type_, tokens: Sequence[Token]) -> Optional[dict]:
-    """Create a CWL-friendly file entry."""
-    entry = tokens[0].value
-    if entry is None:
+def cwl_file(type_, tokens: Sequence[Token]) -> Optional[Union[dict, list[dict]]]:
+    """Create CWL-friendly file entry(ies), expanding globs.
+
+    Returns a single dict for one token, or a list of dicts for multiple tokens.
+    """
+    if not tokens:
         return None
-    if entry.lower() == "null":
+    entries = []
+    for token in tokens:
+        for path in glob.glob(token.value):
+            entries.append({"class": "File", "path": os.path.abspath(path)})
+    if not entries:
         return None
-    else:
-        return json.loads(f'{{"class": "File", "path":"{os.path.abspath(entry)}"}}')
+    if len(tokens) == 1 and len(entries) == 1:
+        return entries[0]
+    return entries
 
 
 def cwl_dir(type_, tokens: Sequence[Token]) -> Optional[dict]:
