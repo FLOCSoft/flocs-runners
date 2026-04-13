@@ -3,6 +3,7 @@ from .utils import (
     check_dd_freq,
     cwl_file,
     cwl_dir,
+    detect_bad_slurm_nodes,
     detect_compute_cluster,
     download_skymodel,
     extract_obsid_from_ms,
@@ -52,6 +53,7 @@ class LINCJSONConfig:
         self.outdir = outdir
         self.cluster = detect_compute_cluster()
         self.mspath = mspath
+        self.full_config = {}
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
@@ -267,7 +269,9 @@ class LINCJSONConfig:
                     with open("temp_jobscript.sh", "w") as f:
                         f.write(wrapped_cmd)
                     logger.info("Written temporary jobscript to temp_jobscript.sh")
-                    out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode("utf-8")
+                    out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode(
+                        "utf-8"
+                    )
                     print(out)
                 else:
                     wrapped_cmd = add_slurm_skeleton(
@@ -302,17 +306,18 @@ class LINCJSONConfig:
             setup_toil_slurm(slurm_params)
             cmd = ["toil-cwl-runner"]
             if scheduler == "slurm":
+                bad_nodes = detect_bad_slurm_nodes()
                 cmd += ["--batchSystem", "slurm"]
                 cmd += ["--slurmTime", slurm_params["time"]]
                 cmd += ["--slurmPartition", slurm_params["queue"]]
+                if "TOIL_SLURM_ARGS" in os.environ.keys():
+                    cmd += [f"--slurmArgs='{os.environ['TOIL_SLURM_ARGS']} --exclude={bad_nodes}'"]
             elif scheduler == "singleMachine":
                 cmd += ["--batchSystem", "single_machine"]
             else:
                 raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
             if self.restarting:
                 cmd += ["--restart"]
-            if "TOIL_SLURM_ARGS" in os.environ.keys():
-                cmd += [f"--slurmArgs='{os.environ['TOIL_SLURM_ARGS']}'"]
             if record_stats:
                 cmd += ["--stats"]
             cmd += ["--no-cwl-default-ram"]

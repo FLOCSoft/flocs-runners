@@ -898,7 +898,9 @@ def dd_calibration(
     ] = None,
     max_rejected_fraction: Annotated[
         float,
-        Parameter(help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."),
+        Parameter(
+            help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."
+        ),
     ] = 0.3,
     config_only: Annotated[
         bool,

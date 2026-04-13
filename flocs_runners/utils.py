@@ -356,7 +356,7 @@ def detect_compute_cluster() -> str:
         return "generic"
 
 
-def detect_bad_slurm_nodes(time: str = "6hour") -> list[str]:
+def detect_bad_slurm_nodes(time: str = "6hour") -> str:
     """Checks for Slurm exit codes that indicate node failure or file system issues
     within some time frame.
 
@@ -389,5 +389,4 @@ echo "$BAD_NODES"
 EOT
 """)
     nodes = subprocess.check_output(["bash", "detect_bad_nodes.sh"]).decode("utf-8")
-    node_list = nodes.split(",")
-    return node_list
+    return nodes

@@ -17,3 +17,6 @@ packages = ["flocs_runners"]
 
 [tool.ruff]
 line-length = 120
+
+[tool.ty.rules]
+invalid-parameter-default = "ignore"
