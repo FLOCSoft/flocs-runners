@@ -38,6 +38,9 @@ class VLBIJSONConfig:
         SETUP = "setup"
         CONCATENATE_FLAG = "concatenate-flag"
         PHASEUP_CONCAT = "phaseup-concat"
+        FACET_IMAGING = "facet-imaging"
+        FACET_SUBTRACT = "facet-subtract"
+        IMAGE_INTERMEDIATE_RESOLUTION = "image-intermediate-resolution"
 
     def __init__(
         self,
@@ -898,7 +901,9 @@ def dd_calibration(
     ] = None,
     max_rejected_fraction: Annotated[
         float,
-        Parameter(help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."),
+        Parameter(
+            help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."
+        ),
     ] = 0.3,
     config_only: Annotated[
         bool,
@@ -1637,6 +1642,333 @@ def phaseup_concat(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
+def facet_imaging(
+    msin: Annotated[
+        list[dict],
+        Parameter(help="MeasurementSets that will be imaged.", converter=cwl_dir),
+    ],
+    pixel_scale: Annotated[float, Parameter(help="Pixel size in arcseconds.")],
+    resolution: Annotated[str, Parameter(help="Angular resolution for WSClean taper argument.")],
+    facet_polygons: Annotated[
+        Optional[list[dict]],
+        Parameter(help="DS9 region file(s) to trim the facet.", converter=cwl_file),
+    ] = None,
+    restoring_beam: Annotated[
+        Optional[list[float]],
+        Parameter(help="Restoring beam following WSClean order: major axis, minor axis, position angle."),
+    ] = None,
+    swarp_config: Annotated[
+        Optional[dict],
+        Parameter(help="Configuration file for SWarp mosaicing.", converter=cwl_file),
+    ] = None,
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory.",
+        ),
+    ] = "",
+):
+    args = locals()
+    logger.info("Generating VLBI facet-imaging config")
+    config = VLBIJSONConfig("")
+    unneeded_keys = [
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "restart",
+        "record_toil_stats",
+        "toil_jobstore",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_facet-imaging.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
+def facet_subtract(
+    msin: Annotated[
+        list[dict],
+        Parameter(help="MeasurementSets with coverage of the target directions.", converter=cwl_dir),
+    ],
+    model_image_directory: Annotated[
+        dict,
+        Parameter(help="Directory with model images.", converter=cwl_dir),
+    ],
+    h5parm: Annotated[
+        dict,
+        Parameter(help="Merged h5parm with calibration solutions.", converter=cwl_file),
+    ],
+    tmpdir: Annotated[
+        Optional[str],
+        Parameter(help="Temporary directory for I/O heavy jobs."),
+    ] = None,
+    ncpu: Annotated[
+        Optional[int],
+        Parameter(help="Number of cores for predict and subtract."),
+    ] = None,
+    dysco_bitrate: Annotated[
+        Optional[int],
+        Parameter(help="Bits per float for visibility columns."),
+    ] = 8,
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory.",
+        ),
+    ] = "",
+):
+    args = locals()
+    logger.info("Generating VLBI facet-subtract config")
+    config = VLBIJSONConfig("")
+    unneeded_keys = [
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "restart",
+        "record_toil_stats",
+        "toil_jobstore",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_facet-subtract.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
+def image_intermediate_resolution(
+    msin: Annotated[
+        list[dict],
+        Parameter(help="MeasurementSets that will be imaged.", converter=cwl_dir),
+    ],
+    dd_solutions: Annotated[
+        dict,
+        Parameter(help="Direction-dependent calibration solutions as multi-direction H5parm.", converter=cwl_file),
+    ],
+    number_cores: Annotated[
+        Optional[int],
+        Parameter(help="Minimum number of cores for high I/O steps."),
+    ] = 12,
+    image_size: Annotated[
+        Optional[list[int]],
+        Parameter(help="Size of the image in pixels."),
+    ] = None,
+    pixel_scale: Annotated[
+        Optional[float],
+        Parameter(help="Pixel size in arcseconds."),
+    ] = 0.4,
+    facet_region_file: Annotated[
+        Optional[dict],
+        Parameter(help="Optional user-provided facet layout file.", converter=cwl_file),
+    ] = None,
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory.",
+        ),
+    ] = "",
+):
+    args = locals()
+    logger.info("Generating VLBI image-intermediate-resolution config")
+    config = VLBIJSONConfig("")
+    unneeded_keys = [
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "restart",
+        "record_toil_stats",
+        "toil_jobstore",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_image-intermediate-resolution.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
             toil_jobstore=args["toil_jobstore"],
         )
 
