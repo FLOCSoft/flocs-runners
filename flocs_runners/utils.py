@@ -320,7 +320,7 @@ def ra_dec_to_iltj(ra_deg, dec_deg):
         str: Source name in ILTJhhmmss.ss±ddmmss.s format
     """
 
-    coord = SkyCoord(ra=ra_deg * u.degree, dec=dec_deg * u.degree, frame="icrs")
+    coord = SkyCoord(ra=ra_deg * u.degree, dec=dec_deg * u.degree, frame="icrs") # ty: ignore[unresolved-attribute]
 
     ra_h = int(coord.ra.hms.h)  # Hours component
     ra_m = int(coord.ra.hms.m)  # Minutes component
@@ -338,7 +338,7 @@ def ra_dec_to_iltj(ra_deg, dec_deg):
 
 def is_ms(ms: str):
     try:
-        with ct.table(ms) as ms_open:
+        with ct.table(ms) as _:
             pass
         return True
     except RuntimeError:
@@ -354,3 +354,40 @@ def detect_compute_cluster() -> str:
         return "cosma"
     else:
         return "generic"
+
+
+def detect_bad_slurm_nodes(time: str = "6hour") -> list[str]:
+    """Checks for Slurm exit codes that indicate node failure or file system issues
+    within some time frame.
+
+    Relies on the following indicators:
+    * NODE_FAIL - indicates node failure
+    * exit code 0:53 - indicates a file or directory not being accessible
+
+    Args:
+        time (str): a string denoting a time range that sacct understands. Will be passed as `-S now-{time}`.
+    Returns:
+        nodes (list[str]): a list of nodes that are considered bad.
+    """
+    with open("detect_bad_nodes.sh") as f:
+        f.write(f"""
+#!/bin/bash
+
+TODAY=$(date +"%Y-%m-%d")
+MAX_RUNTIME=5 # seconds until Failure
+JOB_PATTERN="toil_job"
+
+BAD_NODES=$(sacct -X -S now-{time} --format=JobID,JobName%50,State,NodeList,ElapsedRaw,ExitCode --noheader |
+grep "$JOB_PATTERN" |
+grep -E "NODE_FAIL|0:53" |
+awk -v max="$MAX_RUNTIME" '$5 < max {{ print $4 }}' |
+tr ',' '\n' |
+sort -u |
+paste -sd, -)
+
+echo "$BAD_NODES"
+EOT
+""")
+    nodes = subprocess.check_output(["bash", "detect_bad_nodes.sh"]).decode("utf-8")
+    node_list = nodes.split(",")
+    return node_list
