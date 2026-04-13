@@ -170,6 +170,12 @@ class VLBIJSONConfig:
             self.mode = self.OBS_TYPE.CONCATENATE_FLAG
         elif "phaseup-concat" in self.configfile:
             self.mode = self.OBS_TYPE.PHASEUP_CONCAT
+        elif "facet-imaging" in self.configfile:
+            self.mode = self.OBS_TYPE.FACET_IMAGING
+        elif "facet-subtract" in self.configfile:
+            self.mode = self.OBS_TYPE.FACET_SUBTRACT
+        elif "image-intermediate-resolution" in self.configfile:
+            self.mode = self.OBS_TYPE.IMAGE_INTERMEDIATE_RESOLUTION
         else:
             raise RuntimeError("Failed to deduce workflow from config file. Is it named correctly?")
 
