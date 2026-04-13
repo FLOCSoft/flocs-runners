@@ -1877,10 +1877,7 @@ def facet_subtract(
 
 @app.command()
 def image_intermediate_resolution(
-    msin: Annotated[
-        list[dict],
-        Parameter(help="MeasurementSets that will be imaged.", converter=cwl_dir),
-    ],
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     dd_solutions: Annotated[
         dict,
         Parameter(help="Direction-dependent calibration solutions as multi-direction H5parm.", converter=cwl_file),
@@ -1917,6 +1914,10 @@ def image_intermediate_resolution(
     rundir: Annotated[
         str,
         Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
     ] = os.getcwd(),
     slurm_queue: Annotated[
         str,
