@@ -1933,10 +1933,7 @@ def facet_imaging(
 
 @app.command()
 def facet_subtract(
-    msin: Annotated[
-        list[dict],
-        Parameter(help="MeasurementSets with coverage of the target directions.", converter=cwl_dir),
-    ],
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     model_image_directory: Annotated[
         dict,
         Parameter(help="Directory with model images.", converter=cwl_dir),
@@ -1945,6 +1942,7 @@ def facet_subtract(
         dict,
         Parameter(help="Merged h5parm with calibration solutions.", converter=cwl_file),
     ],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     tmpdir: Annotated[
         Optional[str],
         Parameter(help="Temporary directory for I/O heavy jobs."),
