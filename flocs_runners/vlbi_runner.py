@@ -1654,12 +1654,10 @@ def phaseup_concat(
 
 @app.command()
 def facet_imaging(
-    msin: Annotated[
-        list[dict],
-        Parameter(help="MeasurementSets that will be imaged.", converter=cwl_dir),
-    ],
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     pixel_scale: Annotated[float, Parameter(help="Pixel size in arcseconds.")],
     resolution: Annotated[str, Parameter(help="Angular resolution for WSClean taper argument.")],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     facet_polygons: Annotated[
         Optional[list[dict]],
         Parameter(help="DS9 region file(s) to trim the facet.", converter=cwl_file),
@@ -1723,7 +1721,7 @@ def facet_imaging(
 ):
     args = locals()
     logger.info("Generating VLBI facet-imaging config")
-    config = VLBIJSONConfig(mspath=args["msin"], outdir=args["outdir"])
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=args["outdir"])
     unneeded_keys = [
         "config_only",
         "scheduler",
@@ -1804,6 +1802,10 @@ def facet_subtract(
         str,
         Parameter(help="Directory to run in."),
     ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
     slurm_queue: Annotated[
         str,
         Parameter(help="Slurm queue to run jobs on."),
@@ -1835,7 +1837,7 @@ def facet_subtract(
 ):
     args = locals()
     logger.info("Generating VLBI facet-subtract config")
-    config = VLBIJSONConfig("")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=args["outdir"])
     unneeded_keys = [
         "config_only",
         "scheduler",
@@ -1883,6 +1885,7 @@ def image_intermediate_resolution(
         dict,
         Parameter(help="Direction-dependent calibration solutions as multi-direction H5parm.", converter=cwl_file),
     ],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     number_cores: Annotated[
         Optional[int],
         Parameter(help="Minimum number of cores for high I/O steps."),
@@ -1946,7 +1949,7 @@ def image_intermediate_resolution(
 ):
     args = locals()
     logger.info("Generating VLBI image-intermediate-resolution config")
-    config = VLBIJSONConfig("")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=args["outdir"])
     unneeded_keys = [
         "config_only",
         "scheduler",
