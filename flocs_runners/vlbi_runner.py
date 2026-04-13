@@ -1688,6 +1688,10 @@ def facet_imaging(
         str,
         Parameter(help="Directory to run in."),
     ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
     slurm_queue: Annotated[
         str,
         Parameter(help="Slurm queue to run jobs on."),
@@ -1719,12 +1723,13 @@ def facet_imaging(
 ):
     args = locals()
     logger.info("Generating VLBI facet-imaging config")
-    config = VLBIJSONConfig("")
+    config = VLBIJSONConfig(mspath=args["msin"], outdir=args["outdir"])
     unneeded_keys = [
         "config_only",
         "scheduler",
         "runner",
         "rundir",
+        "outdir",
         "slurm_queue",
         "slurm_account",
         "slurm_time",
