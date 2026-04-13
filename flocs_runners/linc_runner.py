@@ -1038,7 +1038,7 @@ def target(
         if cluster == "cosma":
             logger.info("Detected COSMA, automatically setting offline worker mode.")
             args["offline_workers"] = True
-        if args["offline_workers"]:
+        if args["offline_workers"] and not args["restart"]:
             logger.info("Offline-worker mode requested")
             logger.info("Downloading spinifex corrections")
             new_h5 = obtain_spinifex(config.configdict["msin"][0]["path"], args["cal_solutions"]["path"])
