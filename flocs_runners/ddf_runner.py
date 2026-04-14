@@ -74,6 +74,7 @@ class DDFConfig:
             self.restarting = True
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
         self.setup_apptainer_variables(self.rundir)
+        ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
 
         if scheduler == "slurm":
@@ -90,11 +91,11 @@ class DDFConfig:
             logger.info("Written temporary jobscript to temp_jobscript.sh")
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
         elif scheduler == "singleMachine":
-            cmd = "make_mslists.py"
+            cmd = f"apptainer exec {ddf_container} make_mslists.py"
             logger.info(f"Running command:\n{cmd}")
             out = subprocess.check_output(cmd.split(" "))
 
-            cmd = f"pipeline.py {self.ddfconfig}"
+            cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
             logger.info(f"Running command:\n{cmd}")
             try:
                 out = subprocess.check_output(cmd.split(" "))
@@ -107,6 +108,13 @@ class DDFConfig:
                 if e.stderr:
                     with open(f"log_DDF-pipeline_err.txt", "wb") as f:
                         f.write(e.stderr)
+
+    def verify_ddf_container(self) -> str:
+        ddf_container = os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif")
+        if not os.path.isfile(ddf_container):
+            logger.critical("Container `ddf-pipeline.sif` not found in $CWL_SINGULARITY_CACHE")
+            raise RuntimeError("No viable ddf-pipeline container was found.")
+        return ddf_container
 
     def setup_apptainer_variables(self, workdir):
         try:
