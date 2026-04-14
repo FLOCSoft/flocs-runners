@@ -86,7 +86,7 @@ class DDFConfig:
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
             print(out)
         elif scheduler == "singleMachine":
-            cmd = f"apptainer exec {ddf_container} make_mslists.py"
+            cmd = f"apptainer exec {ddf_container} make_mslists.py force"
             logger.info(f"Running command:\n{cmd}")
             out = subprocess.check_output(cmd.split(" "))
 
