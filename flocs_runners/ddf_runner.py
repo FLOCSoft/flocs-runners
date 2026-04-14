@@ -31,7 +31,7 @@ class DDFConfig:
         self.mspath = mspath
         self.ddfconfig = ddfconfig
 
-        filedir = os.path.join(mspath, "*pre-cal.ms")
+        filedir = os.path.join(os.path.abspath(mspath), "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
@@ -71,8 +71,8 @@ class DDFConfig:
 
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
-                data_dir=self.mspath,
-                workdir=workdir,
+                data_dir=os.path.abspath(self.mspath),
+                workdir=os.path.abspath(workdir),
                 configfile=self.ddfconfig,
                 job_name=f"DDF-pipeline_{self.obsid}",
                 cluster=self.cluster,
