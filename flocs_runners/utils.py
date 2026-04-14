@@ -262,6 +262,52 @@ rm -rf \$RUNDIR
     return wrapped
 
 
+def add_slurm_skeleton_ddf(
+    data_dir: str,
+    configfile: str,
+    workdir: str = os.getcwd(),
+    outdir: str = "",
+    time: str = "",
+    cores: int = 0,
+    job_name: str = "",
+    queue: str = "",
+    account: str = "",
+    memory: int = 0,
+    cluster: str = "",
+    local_scratch: bool = False,
+):
+    sbatch_line = "#SBATCH "
+    if time:
+        sbatch_line += f"-t {time} "
+    if cores:
+        sbatch_line += f"-c {cores} "
+    if job_name:
+        sbatch_line += f"--job-name {job_name} "
+    if queue:
+        sbatch_line += f"-p {queue} "
+    if account:
+        sbatch_line += f"-A {account} "
+    if memory:
+        sbatch_line += f"--mem {memory}GB "
+    if local_scratch:
+        wrapped = f"""#!/bin/bash
+{sbatch_line}
+export WORKDIR=$(mktemp -d -p $TMPDIR)
+cd $WORKDIR
+rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
+flocs-run ddf-pipeline --config-file {configfile} .
+"""
+    else:
+        wrapped = f"""#!/bin/bash
+{sbatch_line}
+export WORKDIR={workdir}
+cd $WORKDIR
+rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
+flocs-run ddf-pipeline --config-file {configfile} .
+"""
+    return wrapped
+
+
 def add_apptainer_skeleton(contents: str, container: str, bindpaths: str = ""):
     wrapped = f"apptainer exec -B {bindpaths} {container} {contents}"
     return wrapped
