@@ -76,7 +76,7 @@ class DDFConfig:
                 workdir=os.path.abspath(self.rundir),
                 outdir=os.path.abspath(outdir),
                 configfile=self.ddfconfig,
-                job_name=f"DDF-pipeline_{self.obsid}",
+                job_name=f"DDF-pipeline_L{self.obsid}",
                 cluster=self.cluster,
                 **slurm_params,
             )
