@@ -1,24 +1,16 @@
 from .utils import (
     add_slurm_skeleton_ddf,
-    check_dd_freq,
     detect_compute_cluster,
     extract_obsid_from_ms,
     get_container_env_var,
-    get_prefactor_freqs,
-    setup_toil_slurm,
-    verify_slurm_environment_toil,
-    verify_toil,
 )
 import glob
-import json
 import os
-import sys
 import structlog
 import shutil
 import subprocess
 import tempfile
 from time import gmtime, strftime
-from enum import Enum
 from cyclopts import Parameter
 from typing_extensions import Annotated, Optional
 
@@ -39,7 +31,7 @@ class DDFConfig:
         self.mspath = mspath
         self.ddfconfig = ddfconfig
 
-        filedir = os.path.join(mspath, f"*pre-cal.ms")
+        filedir = os.path.join(mspath, "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
@@ -50,11 +42,11 @@ class DDFConfig:
             self.obsid = "unknown"
 
     def setup_rundir(self, workdir):
-        self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_{self.obsid}.", dir=workdir)
+        self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
-        outpath = os.path.join(self.outdir, f"DDF-pipeline_{self.mode.value}_L{self.obsid}_{date}")
+        outpath = os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
         shutil.move(self.rundir, outpath)
 
@@ -90,6 +82,7 @@ class DDFConfig:
                 f.write(wrapped_cmd)
             logger.info("Written temporary jobscript to temp_jobscript.sh")
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+            print(out)
         elif scheduler == "singleMachine":
             cmd = f"apptainer exec {ddf_container} make_mslists.py"
             logger.info(f"Running command:\n{cmd}")
@@ -106,7 +99,7 @@ class DDFConfig:
                 with open("log_DDF-pipeline.txt", "wb") as f:
                     f.write(e.stdout)
                 if e.stderr:
-                    with open(f"log_DDF-pipeline_err.txt", "wb") as f:
+                    with open("log_DDF-pipeline_err.txt", "wb") as f:
                         f.write(e.stderr)
 
     def verify_ddf_container(self) -> str:
