@@ -909,7 +909,7 @@ def target(
     aoflag_reorder: Annotated[Optional[bool], Parameter(help="Reorder AOFlagger.")] = False,
     aoflag_chunksize: Annotated[Optional[int], Parameter(help="AOFlagger chunk size.")] = 2000,
     aoflag_freqconcat: Annotated[Optional[bool], Parameter(help="AOFlagger frequency concatenation.")] = True,
-    aoflag_cores: Annotated[Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")] = 5,
+    aoflag_cores: Annotated[Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")] = 10,
     selfcal: Annotated[Optional[bool], Parameter(help="Enable self-calibration.")] = False,
     selfcal_strategy: Annotated[Optional[str], Parameter(help="Self-calibration strategy.")] = "HBA",
     selfcal_hba_imsize: Annotated[Optional[List[int]], Parameter(help="Selfcal HBA image size.")] = [20000, 20000],
