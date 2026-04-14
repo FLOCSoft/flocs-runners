@@ -295,7 +295,7 @@ def add_slurm_skeleton_ddf(
 export WORKDIR=$(mktemp -d -p $TMPDIR)
 cd $WORKDIR
 rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
-flocs-run ddf-pipeline --config-file {configfile} .
+flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
 """
     else:
         wrapped = f"""#!/bin/bash
@@ -303,7 +303,7 @@ flocs-run ddf-pipeline --config-file {configfile} .
 export WORKDIR={workdir}
 cd $WORKDIR
 rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
-flocs-run ddf-pipeline --config-file {configfile} .
+flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
 """
     return wrapped
 
