@@ -54,6 +54,7 @@ class DDFConfig:
         self,
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
+        outdir: str = os.getcwd(),
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
@@ -72,7 +73,8 @@ class DDFConfig:
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
                 data_dir=os.path.abspath(self.mspath),
-                workdir=os.path.abspath(workdir),
+                workdir=os.path.abspath(self.rundir),
+                outdir=os.path.abspath(outdir),
                 configfile=self.ddfconfig,
                 job_name=f"DDF-pipeline_{self.obsid}",
                 cluster=self.cluster,
@@ -255,6 +257,7 @@ def ddf_pipeline(
             "memory": args["slurm_memory"],
         },
         workdir=args["rundir"],
+        outdir=args["outdir"],
         restart=args["restart"],
         use_node_scratch=args["use_node_scratch"],
     )
