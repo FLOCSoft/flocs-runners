@@ -211,7 +211,7 @@ def ddf_pipeline(
         Parameter(help="Slurm cores to reserve."),
     ] = 32,
     slurm_memory: Annotated[
-        Optional[float],
+        Optional[int],
         Parameter(help="Slurm memory to reserve."),
     ] = None,
     restart: Annotated[
