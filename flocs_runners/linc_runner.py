@@ -21,6 +21,7 @@ import structlog
 import shutil
 import subprocess
 import tempfile
+from losoto.h5parm import h5parm
 from time import gmtime, strftime
 from enum import Enum
 from cyclopts import App, Parameter, Token
@@ -1040,10 +1041,21 @@ def target(
             args["offline_workers"] = True
         if args["offline_workers"] and not args["restart"]:
             logger.info("Offline-worker mode requested")
-            logger.info("Downloading spinifex corrections")
-            new_h5 = obtain_spinifex(config.configdict["msin"][0]["path"], args["cal_solutions"]["path"])
-            args["cal_solutions"]["path"] = new_h5
-            config.configdict["cal_solutions"] = args["cal_solutions"]
+            h5 = h5parm(args["cal_solutions"])
+            sss = h5.getSolsetNames()
+            need_spinifex = False
+            if "target" in sss:
+                ss = h5.getSolset("target")
+                sts = ss.getSoltabNames()
+                if "spinifex" not in sts:
+                    need_spinifex = True
+            else:
+                need_spinfex = True
+            if need_spinifex:
+                logger.info("Spinifex not present, downloading spinifex corrections")
+                new_h5 = obtain_spinifex(config.configdict["msin"][0]["path"], args["cal_solutions"]["path"])
+                args["cal_solutions"]["path"] = new_h5
+                config.configdict["cal_solutions"] = args["cal_solutions"]
             args["get_RM"] = False
             config.configdict["get_RM"] = False
             if not args["target_skymodel"]:
