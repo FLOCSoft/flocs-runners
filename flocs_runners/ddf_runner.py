@@ -117,46 +117,19 @@ class DDFConfig:
         except subprocess.CalledProcessError:
             out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
-            os.environ["APPTAINERENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["APPTAINERENV_PREPEND_PATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts"
-            os.environ["APPTAINERENV_PYTHONPATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
             os.environ["PATH"] = os.environ["APPTAINERENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "APPTAINER_BINDPATH" not in os.environ:
-                os.environ["APPTAINER_BINDPATH"] = (
-                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
-                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{os.path.dirname(workdir)}"
-                )
+                os.environ["APPTAINER_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
-                os.environ["APPTAINER_BINDPATH"] = (
-                    f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
-                    + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{workdir}"
-                    + f",{os.environ['APPTAINER_BINDPATH']}"
-                )
+                os.environ["APPTAINER_BINDPATH"] = f"{workdir}" + f",{os.environ['APPTAINER_BINDPATH']}"
         elif "singularity" in out:
-            os.environ["SINGULARITYENV_LINC_DATA_ROOT"] = os.environ["LINC_DATA_ROOT"]
-            os.environ["SINGULARITYENV_PREPEND_PATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts"
-            # Note that cwltool for some reason does not inherit this.
-            os.environ["SINGULARITYENV_PYTHONPATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
             os.environ["PATH"] = os.environ["SINGULARITYENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "SINGULARITY_BINDPATH" not in os.environ:
-                os.environ["SINGULARITY_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}"
-                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
-                    + f",{os.path.dirname(workdir)}"
-                )
+                os.environ["SINGULARITY_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
                 os.environ["SINGULARITY_BINDPATH"] = (
-                    f"{os.path.dirname(os.environ['LINC_DATA_ROOT'])}"
-                    + f",{os.path.dirname(os.environ['VLBI_DATA_ROOT'])}"
-                    + f",{os.path.dirname(workdir)}"
-                    + f",{os.environ['SINGULARITY_BINDPATH']}"
+                    f"{os.path.dirname(workdir)}" + f",{os.environ['SINGULARITY_BINDPATH']}"
                 )
-        if "PYTHONPATH" in os.environ:
-            os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts:" + os.environ["PYTHONPATH"]
-        else:
-            os.environ["PYTHONPATH"] = "$LINC_DATA_ROOT/scripts"
 
     def setup_toil_directories(self, workdir: str) -> tuple[str, str]:
         dir_coordination = os.path.join(workdir, "coordination")
