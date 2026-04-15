@@ -1041,7 +1041,7 @@ def target(
             args["offline_workers"] = True
         if args["offline_workers"] and not args["restart"]:
             logger.info("Offline-worker mode requested")
-            h5 = h5parm(args["cal_solutions"])
+            h5 = h5parm(args["cal_solutions"]["path"])
             sss = h5.getSolsetNames()
             need_spinifex = False
             if "target" in sss:
