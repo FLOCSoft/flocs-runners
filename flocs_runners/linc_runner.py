@@ -268,7 +268,9 @@ class LINCJSONConfig:
                     with open("temp_jobscript.sh", "w") as f:
                         f.write(wrapped_cmd)
                     logger.info("Written temporary jobscript to temp_jobscript.sh")
-                    out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode("utf-8")
+                    out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode(
+                        "utf-8"
+                    )
                     print(out)
                 else:
                     wrapped_cmd = add_slurm_skeleton(
@@ -681,6 +683,7 @@ def calibrator(
             help="Split the set into intervals with the given maximum size, and flag each interval independently. This lowers the amount of memory required."
         ),
     ] = 2000,
+    aoflag_cores: Annotated[Optional[int], Parameter(help="Cores reserved for the AOFlagger step.")] = 3,
     solveralgorithm: Annotated[
         Optional[str],
         Parameter(help="Solver algorithm for DP3 to use. If not given, use DP3 default."),
