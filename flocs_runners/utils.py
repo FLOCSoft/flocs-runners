@@ -294,7 +294,9 @@ def add_slurm_skeleton_ddf(
 {sbatch_line}
 export WORKDIR=$(mktemp -d -p $TMPDIR)
 cd $WORKDIR
-rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
+for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
+    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.uvwcompression=False steps=[]
+done
 flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
 """
     else:
@@ -302,7 +304,9 @@ flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
 {sbatch_line}
 export WORKDIR={workdir}
 cd $WORKDIR
-rsync -avP {os.path.join(data_dir, 'L*pre-cal.ms')} .
+for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
+    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.uvwcompression=False steps=[]
+done
 flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
 """
     return wrapped
