@@ -117,13 +117,11 @@ class DDFConfig:
         except subprocess.CalledProcessError:
             out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
-            os.environ["PATH"] = os.environ["APPTAINERENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
                 os.environ["APPTAINER_BINDPATH"] = f"{workdir}" + f",{os.environ['APPTAINER_BINDPATH']}"
         elif "singularity" in out:
-            os.environ["PATH"] = os.environ["SINGULARITYENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "SINGULARITY_BINDPATH" not in os.environ:
                 os.environ["SINGULARITY_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
