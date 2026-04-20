@@ -60,8 +60,7 @@ class DDFConfig:
         use_node_scratch: bool = False,
     ):
         if not restart and not use_node_scratch:
-            if scheduler == "singleMachine":
-                self.setup_rundir(workdir)
+            self.setup_rundir(workdir)
             self.restarting = False
         else:
             self.rundir = workdir
