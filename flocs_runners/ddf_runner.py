@@ -9,6 +9,7 @@ import os
 import structlog
 import shutil
 import subprocess
+import sys
 import tempfile
 from time import gmtime, strftime
 from cyclopts import Parameter
@@ -35,6 +36,9 @@ class DDFConfig:
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
+        if not len(files):
+            logger.critical("No input MSes found")
+            sys.exit(-1)
 
         try:
             self.obsid = extract_obsid_from_ms(files[0])

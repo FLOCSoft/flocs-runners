@@ -58,6 +58,9 @@ class LINCJSONConfig:
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
+        if not len(files):
+            logger.critical("No input MSes found")
+            sys.exit(-1)
 
         if not prefac_h5parm["path"]:
             mslist = []
