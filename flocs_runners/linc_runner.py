@@ -53,6 +53,7 @@ class LINCJSONConfig:
         self.outdir = outdir
         self.cluster = detect_compute_cluster()
         self.mspath = mspath
+        self.configfile = ""
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
@@ -116,13 +117,12 @@ class LINCJSONConfig:
                 f.write(f"LINC: {linc_version}".encode("utf-8"))
                 f.write(pip_versions)
 
-    def save(self, fname: str):
-        if not fname.endswith(".json"):
-            fname += ".json"
-        with open(fname, "w") as outfile:
+    def save(self):
+        if not self.configfile.endswith(".json"):
+            self.configfile += ".json"
+        with open(self.configfile, "w") as outfile:
             json.dump(self.configdict, outfile, indent=4)
-        logger.info(f"Written configuration to {fname}")
-        self.configfile = fname
+        logger.info(f"Written configuration to {self.configfile}")
 
     def setup_rundir(self, workdir):
         if "calibrator" in self.configfile:
@@ -162,6 +162,7 @@ class LINCJSONConfig:
                         self.full_config["slurm_cores"] = 32
                         self.full_config["slurm_time"] = "4:00:00"
                         self.configdict["max_dp3_threads"] = 1
+        self.save()
 
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
@@ -792,7 +793,8 @@ def calibrator(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    config.save(f"mslist_{config.obsid}_LINC_calibrator.json")
+    config.configfile = f"mslist_{config.obsid}_LINC_calibrator.json"
+    config.save()
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
         sys.exit(-1)
