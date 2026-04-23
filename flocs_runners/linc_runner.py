@@ -157,10 +157,10 @@ class LINCJSONConfig:
                     elif runner == "cwltool" and self.full_config["scheduler"] == "slurm":
                         logger.info("We are submitting a Slurm job. Hijacking config with known good settings:")
                         logger.info(f"slurm-cores {self.full_config['slurm_cores']} -> 32")
-                        logger.info(f"slurm-time {self.full_config['slurm_time']} -> 4:00:00")
+                        logger.info(f"slurm-time {self.full_config['slurm_time']} -> 12:00:00")
                         logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1")
                         self.full_config["slurm_cores"] = 32
-                        self.full_config["slurm_time"] = "4:00:00"
+                        self.full_config["slurm_time"] = "12:00:00"
                         self.configdict["max_dp3_threads"] = 1
 
     def move_results_from_rundir(self):
