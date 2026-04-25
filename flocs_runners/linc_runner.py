@@ -1056,7 +1056,7 @@ def target(
                 if "spinifex" not in sts:
                     need_spinifex = True
             else:
-                need_spinfex = True
+                need_spinifex = True
             if need_spinifex:
                 logger.info("Spinifex not present, downloading spinifex corrections")
                 new_h5 = obtain_spinifex(config.configdict["msin"][0]["path"], args["cal_solutions"]["path"])
