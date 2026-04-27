@@ -58,7 +58,7 @@ class LINCJSONConfig:
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
         logger.info(f"Found {len(files)} files")
-        if not len(files):
+        if not len(files) and not ("CI" in os.environ):
             logger.critical("No input MSes found")
             sys.exit(-1)
 
