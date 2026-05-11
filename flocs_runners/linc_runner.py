@@ -853,7 +853,7 @@ def target(
             )
         ],
     ),
-    min_unflagged_fraction: Annotated[Optional[float], Parameter(help="Minimum unflagged fraction.")] = 0.5,
+    min_unflagged_fraction: Annotated[Optional[float], Parameter(help="Minimum unflagged fraction.")] = 0.05,
     compression_bitrate: Annotated[
         Optional[int],
         Parameter(help="Compression bitrate. Currently defaults to the DP3 default."),
