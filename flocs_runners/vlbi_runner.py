@@ -14,7 +14,7 @@ from .utils import (
 import glob
 import json
 import os
-import re
+import polars
 import sys
 import shutil
 import structlog
@@ -898,7 +898,9 @@ def dd_calibration(
     ] = None,
     max_rejected_fraction: Annotated[
         float,
-        Parameter(help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."),
+        Parameter(
+            help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."
+        ),
     ] = 0.3,
     config_only: Annotated[
         bool,
@@ -950,21 +952,19 @@ def dd_calibration(
     ] = "",
 ):
     args = locals()
-    cat = Table.read(source_catalogue["path"])
-    cat_modified = False
-    for source in cat:
-        try:
-            parsed_input = re.findall(r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}", source["Source_id"])[0]
-        except IndexError:
-            newname = ra_dec_to_iltj(source["RA"], source["DEC"])
-            logger.info(
-                f"Source {source['Source_id']} does not adhere to ILTJhhmmss.ss+ddmmss.s convention. It will be renamed to {newname} to avoid matching problems."
+    cat = polars.read_csv(source_catalogue["path"])
+    cat = cat.with_columns(
+        Source_id=polars.when(polars.col.Source_id.str.contains(r"ILTJ\d{6}\.\d{2}[+\-]\d{6}\.\d{1}"))
+        .then(polars.col.Source_id)
+        .otherwise(
+            polars.struct(["RA", "DEC"]).map_elements(
+                lambda x: ra_dec_to_iltj(x["RA"], x["DEC"]),
+                return_dtype=polars.String,
             )
-            source["Source_id"] = newname
-            cat_modified = True
-    if cat_modified:
-        shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
-        cat.write(source_catalogue["path"], overwrite=True)
+        )
+    )
+    shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
+    cat.write_csv(source_catalogue["path"])
 
     logger.info("Generating VLBI dd-calibration config")
     config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
