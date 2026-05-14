@@ -964,7 +964,7 @@ def dd_calibration(
             cat_modified = True
     if cat_modified:
         shutil.copy(source_catalogue["path"], source_catalogue["path"] + ".bkp")
-        cat.write(source_catalogue, overwrite=True)
+        cat.write(source_catalogue["path"], overwrite=True)
 
     logger.info("Generating VLBI dd-calibration config")
     config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
