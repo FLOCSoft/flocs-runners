@@ -98,14 +98,14 @@ class DDFConfig:
             logger.info(f"Running command:\n{cmd}")
             try:
                 out = subprocess.check_output(cmd.split(" "))
-                with open("log_DDF-pipeline.txt", "wb") as f:
+                with open(os.path.join(self.rundir, "log_DDF-pipeline.txt"), "wb") as f:
                     f.write(out)
                 self.move_results_from_rundir()
             except subprocess.CalledProcessError as e:
-                with open("log_DDF-pipeline.txt", "wb") as f:
+                with open(os.path.join(self.rundir, "log_DDF-pipeline.txt"), "wb") as f:
                     f.write(e.stdout)
                 if e.stderr:
-                    with open("log_DDF-pipeline_err.txt", "wb") as f:
+                    with open(os.path.join(self.rundir, "log_DDF-pipeline_err.txt"), "wb") as f:
                         f.write(e.stderr)
 
     def verify_ddf_container(self) -> str:

@@ -322,14 +322,14 @@ class VLBIJSONConfig:
             cmd += [self.configfile]
             try:
                 out = subprocess.check_output(cmd)
-                with open(f"log_VLBI_{self.mode.value}.txt", "wb") as f:
+                with open(os.path.join(self.rundir, f"log_VLBI_{self.mode.value}.txt"), "wb") as f:
                     f.write(out)
                 self.move_results_from_rundir()
             except subprocess.CalledProcessError as e:
-                with open(f"log_VLBI_{self.mode.value}.txt", "wb") as f:
+                with open(os.path.join(self.rundir, f"log_VLBI_{self.mode.value}.txt"), "wb") as f:
                     f.write(e.stdout)
                 if e.stderr:
-                    with open(f"log_VLBI_{self.mode.value}_err.txt", "wb") as f:
+                    with open(os.path.join(self.rundir, f"log_VLBI_{self.mode.value}_err.txt"), "wb") as f:
                         f.write(e.stderr)
 
     def setup_apptainer_variables(self, workdir):
