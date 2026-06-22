@@ -606,6 +606,10 @@ def delay_calibration(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "72:00:00",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -777,6 +781,10 @@ def process_ddf(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "72:00:00",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -934,6 +942,10 @@ def dd_calibration(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1098,6 +1110,10 @@ def split_directions(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1228,6 +1244,10 @@ def polarization_imaging(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1359,6 +1379,10 @@ def setup(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1469,6 +1493,10 @@ def concatenate_flag(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
@@ -1583,6 +1611,10 @@ def phaseup_concat(
         str,
         Parameter(help="Slurm time limit to use."),
     ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
     restart: Annotated[
         bool,
         Parameter(help="Restart a toil workflow."),
