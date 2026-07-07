@@ -276,6 +276,7 @@ class VLBIJSONConfig:
                 cmd += ["--batchSystem", "slurm"]
                 cmd += ["--slurmTime", slurm_params["time"]]
                 cmd += ["--slurmPartition", slurm_params["queue"]]
+                cmd += ["--maxJobs", "48"]
             elif scheduler == "singleMachine":
                 cmd += ["--batchSystem", "single_machine"]
             else:
