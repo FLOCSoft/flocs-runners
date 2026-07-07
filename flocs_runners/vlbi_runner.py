@@ -713,15 +713,14 @@ def delay_calibration(
 
 @app.command()
 def process_ddf(
-    msin: Annotated[
-        list[dict], Parameter(converter=cwl_dir, help="Input data from which the LoTSS skymodel will be subtracted.")
-    ],
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     solsdir: Annotated[
         dict, Parameter(converter=cwl_dir, help="Path to the SOLSDIR directory of the DDF-pipeline run.")
     ],
     ddf_rundir: Annotated[
         dict, Parameter(converter=cwl_dir, help="Directory containing the output from DDF-pipeline.")
     ],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".dp3concat",
     box_size: Annotated[
         Optional[float],
         Parameter(
