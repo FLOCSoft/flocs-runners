@@ -6,6 +6,7 @@ from .utils import (
 )
 import glob
 import os
+import pathlib
 import structlog
 import shutil
 import subprocess
@@ -46,13 +47,16 @@ class DDFConfig:
             self.obsid = "unknown"
 
     def setup_rundir(self, workdir):
+        # TODO: fix tempdir structure to avoid nested tmpdir on Slurm submission.
         self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
     def move_results_from_rundir(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         outpath = os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
-        shutil.move(self.rundir, outpath)
+        # Due to how we run there is a weird double tempdir for ddf-pipeline runs, so grab the parent instead.
+        parent = pathlib.Path(self.rundir).parent.absolute().as_posix()
+        shutil.move(parent, outpath)
 
     def run_workflow(
         self,
@@ -75,6 +79,21 @@ class DDFConfig:
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
 
         if scheduler == "slurm":
+            wrapped_cmd = add_slurm_skeleton_ddf(
+                data_dir=os.path.abspath(self.mspath),
+                workdir=os.path.abspath(self.rundir),
+                outdir=os.path.abspath(outdir),
+                configfile=self.ddfconfig,
+                job_name=f"DDF-pipeline_L{self.obsid}",
+                cluster=self.cluster,
+                **slurm_params,
+            )
+            with open("temp_jobscript.sh", "w") as f:
+                f.write(wrapped_cmd)
+            logger.info("Written temporary jobscript to temp_jobscript.sh")
+            out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+            print(out)
+        elif scheduler == "slurm-srun":
             wrapped_cmd = add_slurm_skeleton_ddf(
                 data_dir=os.path.abspath(self.mspath),
                 workdir=os.path.abspath(self.rundir),
