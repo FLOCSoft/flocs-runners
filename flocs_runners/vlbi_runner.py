@@ -870,6 +870,12 @@ def dd_calibration(
             converter=cwl_file,
         ),
     ] = None,
+    validate: Annotated[
+        Optional[bool],
+        Parameter(
+            help="Perform validation of the DD calibration.",
+        ),
+    ] = True,
     max_dp3_threads: Annotated[
         Optional[int],
         Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
@@ -913,6 +919,10 @@ def dd_calibration(
             help="Maximum fraction of bad solutions. Lower value is stricter. Workflow crashes if fraction is exceeded."
         ),
     ] = 0.3,
+    chunk_size_directions: Annotated[
+        int,
+        Parameter(help="Set the number of directions to be split per DP3 call."),
+    ] = 10,
     config_only: Annotated[
         bool,
         Parameter(help="Only generate the config file, do not run it."),
