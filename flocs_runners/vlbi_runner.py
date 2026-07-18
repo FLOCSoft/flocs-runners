@@ -933,7 +933,7 @@ def image_intermediate_resolution(
     ] = "",
 ):
     args = locals()
-    workflow = "image_intermediate_resolution"
+    workflow = "image-intermediate-resolution"
     logger.info(f"Generating VLBI {workflow} config")
     config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
     unneeded_keys = [
