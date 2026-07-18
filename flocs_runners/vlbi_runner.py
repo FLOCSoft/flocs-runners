@@ -845,6 +845,134 @@ def process_ddf(
         )
 
 
+@app.command
+def image_intermediate_resolution(
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    dd_solutions: Annotated[
+        dict,
+        Parameter(
+            help="Direction-dependent calibration solutions to apply during imaging.",
+            converter=cwl_file,
+        ),
+    ],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
+    number_cores: Annotated[
+        Optional[int],
+        Parameter(help="Cores to use for WSClean."),
+    ] = 24,
+    image_size: Annotated[
+        Optional[list[int]],
+        Parameter(consume_multiple=2),
+    ] = [22500, 22500],
+    pixel_scale: Annotated[
+        Optional[float],
+        Parameter(help="Cores to use for WSClean."),
+    ] = 0.4,
+    facet_region_file: Annotated[
+        Optional[str],
+        Parameter(help="Cores to use for WSClean.", converter=cwl_file),
+    ] = None,
+    tmpdir_wsclean: Annotated[
+        Optional[str],
+        Parameter(help="Cores to use for WSClean."),
+    ] = ".",
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_dd-cal-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
+    ] = "",
+):
+    args = locals()
+    workflow = "image_intermediate_resolution"
+    logger.info(f"Generating VLBI {workflow} config")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
+    unneeded_keys = [
+        "mspath",
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "slurm_cores",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "record_toil_stats",
+        "toil_jobstore",
+        "restart",
+        "outdir",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_{workflow}.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
 @app.command()
 def dd_calibration(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
