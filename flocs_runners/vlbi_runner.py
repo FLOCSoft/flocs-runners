@@ -39,6 +39,7 @@ class VLBIJSONConfig:
         CONCATENATE_FLAG = "concatenate-flag"
         PHASEUP_CONCAT = "phaseup-concat"
         DDF_SUBTRACT = "process-ddf"
+        IMAGE_INTERMEDIATE = "image-intermediate-resolution"
 
     def __init__(
         self,
@@ -170,6 +171,8 @@ class VLBIJSONConfig:
             self.mode = self.OBS_TYPE.PHASEUP_CONCAT
         elif "process-ddf" in self.configfile:
             self.mode = self.OBS_TYPE.DDF_SUBTRACT
+        elif "image-intermediate-resolution" in self.configfile:
+            self.mode = self.OBS_TYPE.IMAGE_INTERMEDIATE
         else:
             raise RuntimeError("Failed to deduce workflow from config file. Is it named correctly?")
 
