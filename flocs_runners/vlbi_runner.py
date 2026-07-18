@@ -39,7 +39,7 @@ class VLBIJSONConfig:
         CONCATENATE_FLAG = "concatenate-flag"
         PHASEUP_CONCAT = "phaseup-concat"
         DDF_SUBTRACT = "process-ddf"
-        IMAGE_INTERMEDIATE = "image-intermediate-resolution"
+        IMAGE_INTERMEDIATE = "image_intermediate_resolution"
 
     def __init__(
         self,
