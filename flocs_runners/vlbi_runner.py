@@ -40,6 +40,8 @@ class VLBIJSONConfig:
         PHASEUP_CONCAT = "phaseup-concat"
         DDF_SUBTRACT = "process-ddf"
         IMAGE_INTERMEDIATE = "image_intermediate_resolution"
+        FACET_SUBTRACT = "facet_subtract"
+        FACET_IMAGING = "facet_imaging"
 
     def __init__(
         self,
@@ -173,6 +175,10 @@ class VLBIJSONConfig:
             self.mode = self.OBS_TYPE.DDF_SUBTRACT
         elif "image-intermediate-resolution" in self.configfile:
             self.mode = self.OBS_TYPE.IMAGE_INTERMEDIATE
+        elif "facet_subtract" in self.configfile:
+            self.mode = self.OBS_TYPE.FACET_SUBTRACT
+        elif "facet_imaging" in self.configfile:
+            self.mode = self.OBS_TYPE.FACET_IMAGING
         else:
             raise RuntimeError("Failed to deduce workflow from config file. Is it named correctly?")
 
@@ -1813,6 +1819,265 @@ def phaseup_concat(
             },
             workdir=args["rundir"],
             restart=args["restart"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
+def facet_subtract(
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    model_image_directory: Annotated[
+        dict,
+        Parameter(converter=cwl_dir, help="Directory with 1.2\" model images."),
+    ],
+    h5parm: Annotated[
+        dict,
+        Parameter(
+            help="Merged h5parm with calibration solutions for multiple directions.",
+            converter=cwl_file,
+        ),
+    ],
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
+    tmpdir: Annotated[
+        Optional[str],
+        Parameter(help="Temporary directory to run I/O heavy jobs."),
+    ] = None,
+    ncpu: Annotated[
+        Optional[int],
+        Parameter(help="Number of cores to use during predict and subtract."),
+    ] = None,
+    dysco_bitrate: Annotated[
+        Optional[int],
+        Parameter(help="Number of bits per float used for columns containing visibilities."),
+    ] = 8,
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_facet_subtract-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
+    ] = "",
+):
+    args = locals()
+    workflow = "facet_subtract"
+    logger.info(f"Generating VLBI {workflow} config")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
+    unneeded_keys = [
+        "mspath",
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "outdir",
+        "slurm_cores",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "record_toil_stats",
+        "toil_jobstore",
+        "restart",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_{workflow}.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
+            toil_jobstore=args["toil_jobstore"],
+        )
+
+
+@app.command()
+def facet_imaging(
+    mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
+    pixel_scale: Annotated[
+        float,
+        Parameter(help="Pixel size in arcseconds."),
+    ],
+    resolution: Annotated[
+        str,
+        Parameter(help="Angular resolution passed to WSClean's taper argument. WSClean syntax."),
+    ],
+    facet_polygons: Annotated[
+        Optional[list[dict]],
+        Parameter(
+            help="Optional DS9 region file(s) that will be used to trim the facet. Its length should match that of `msin`.",
+            converter=cwl_file,
+            consume_multiple=True,
+        ),
+    ] = None,
+    restoring_beam: Annotated[
+        Optional[List[float]],
+        Parameter(
+            help="Restoring beam to use for every facet following the WSClean order of major axis, minor axis, position angle.",
+            consume_multiple=True,
+        ),
+    ] = None,
+    swarp_config: Annotated[
+        Optional[dict],
+        Parameter(
+            help="Optional configuration file to be passed to SWarp for mosaicing.",
+            converter=cwl_file,
+        ),
+    ] = None,
+    tmpdir: Annotated[
+        Optional[str],
+        Parameter(help="Temporary directory to run I/O heavy jobs."),
+    ] = None,
+    ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
+    config_only: Annotated[
+        bool,
+        Parameter(help="Only generate the config file, do not run it."),
+    ] = False,
+    scheduler: Annotated[
+        str,
+        Parameter(help="System scheduler to use."),
+    ] = "singleMachine",
+    runner: Annotated[
+        str,
+        Parameter(help="CWL runner to use."),
+    ] = "cwltool",
+    rundir: Annotated[
+        str,
+        Parameter(help="Directory to run in."),
+    ] = os.getcwd(),
+    outdir: Annotated[
+        str,
+        Parameter(help="Directory to move outputs to."),
+    ] = os.getcwd(),
+    slurm_queue: Annotated[
+        str,
+        Parameter(help="Slurm queue to run jobs on."),
+    ] = "",
+    slurm_account: Annotated[
+        str,
+        Parameter(help="Slurm account to use."),
+    ] = "",
+    slurm_time: Annotated[
+        str,
+        Parameter(help="Slurm time limit to use."),
+    ] = "",
+    slurm_cores: Annotated[
+        int,
+        Parameter(help="Number of cores to reserve for a monolithic pipeline run."),
+    ] = 30,
+    restart: Annotated[
+        bool,
+        Parameter(help="Restart a toil workflow."),
+    ] = False,
+    record_toil_stats: Annotated[
+        bool,
+        Parameter(
+            help="Use Toil's stats flag to record statistics. N.B. this disables cleanup of successful steps; make sure there is enough disk space until the end of the run."
+        ),
+    ] = False,
+    toil_jobstore: Annotated[
+        str,
+        Parameter(
+            help="Path/name for the Toil jobStore directory. Relevant memorable name for run recommended if using (e.g. '<your_path>/jobStore-VLBI_facet_imaging-701779' for data with obsid 701779). Default is 'jobstore' within temporary directory created by processing run. N.B. Toil performance may suffer if directory is in BeeGFS file system."
+        ),
+    ] = "",
+):
+    args = locals()
+    workflow = "facet_imaging"
+    logger.info(f"Generating VLBI {workflow} config")
+    config = VLBIJSONConfig(args["mspath"], ms_suffix=args["ms_suffix"], outdir=outdir)
+    unneeded_keys = [
+        "mspath",
+        "config_only",
+        "scheduler",
+        "runner",
+        "rundir",
+        "outdir",
+        "slurm_cores",
+        "slurm_queue",
+        "slurm_account",
+        "slurm_time",
+        "record_toil_stats",
+        "toil_jobstore",
+        "restart",
+    ]
+    args_for_linc = args.copy()
+    for key in unneeded_keys:
+        args_for_linc.pop(key)
+    for key, val in args_for_linc.items():
+        config.add_entry(key, val)
+    config.save(f"mslist_{config.obsid}_VLBI_{workflow}.json")
+    if args["record_toil_stats"] and args["runner"] != "toil":
+        logger.critical("--record-toil-stats needs '--runner toil'.")
+        sys.exit(-1)
+    if not args["config_only"]:
+        config.run_workflow(
+            runner=args["runner"],
+            scheduler=args["scheduler"],
+            slurm_params={
+                "queue": args["slurm_queue"],
+                "account": args["slurm_account"],
+                "time": args["slurm_time"],
+            },
+            workdir=args["rundir"],
+            restart=args["restart"],
+            record_stats=args["record_toil_stats"],
             toil_jobstore=args["toil_jobstore"],
         )
 
