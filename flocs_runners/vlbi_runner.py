@@ -1828,7 +1828,7 @@ def facet_subtract(
     mspath: Annotated[str, Parameter(help="Directory where MSes are located.")],
     model_image_directory: Annotated[
         dict,
-        Parameter(converter=cwl_dir, help="Directory with 1.2\" model images."),
+        Parameter(converter=cwl_dir, help='Directory with 1.2" model images.'),
     ],
     h5parm: Annotated[
         dict,
