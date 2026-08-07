@@ -287,6 +287,7 @@ class LINCJSONConfig:
                     logger.info("Written temporary jobscript to temp_jobscript.sh")
                     out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
                     print(out)
+                    self.move_results_from_rundir()
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 try:
