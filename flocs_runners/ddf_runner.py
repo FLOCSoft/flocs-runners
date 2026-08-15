@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from time import gmtime, strftime
 from cyclopts import Parameter
 from typing_extensions import Annotated, Optional
@@ -112,6 +113,9 @@ class DDFConfig:
             cmd = f"apptainer exec {ddf_container} make_mslists.py force"
             logger.info(f"Running command:\n{cmd}")
             out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
+            with open("big-mslist.txt", "w") as mslist:
+                for ms in sorted(Path(os.getcwd()).glob("*pre-cal.ms")):
+                    mslist.write(f"{ms.name}\n")
 
             cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
             logger.info(f"Running command:\n{cmd}")
