@@ -111,7 +111,7 @@ class DDFConfig:
         elif scheduler == "singleMachine":
             cmd = f"apptainer exec {ddf_container} make_mslists.py force"
             logger.info(f"Running command:\n{cmd}")
-            out = subprocess.check_output(cmd.split(" "))
+            out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
 
             cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
             logger.info(f"Running command:\n{cmd}")
