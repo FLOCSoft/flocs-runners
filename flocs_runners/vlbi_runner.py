@@ -225,7 +225,10 @@ class VLBIJSONConfig:
         except subprocess.CalledProcessError:
             logger.warning("Failed to remove leftover tmpdirs.")
 
-        outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}")
+        if self.mode == self.OBS_TYPE.FACET_IMAGING:
+            outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{self.configdict['resolution']}_{date}")
+        else:
+            outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
         shutil.move(self.rundir, outpath)
 
