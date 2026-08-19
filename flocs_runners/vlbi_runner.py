@@ -226,7 +226,9 @@ class VLBIJSONConfig:
             logger.warning("Failed to remove leftover tmpdirs.")
 
         if self.mode == self.OBS_TYPE.FACET_IMAGING:
-            outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{self.configdict['resolution']}_{date}")
+            outpath = os.path.join(
+                self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{self.configdict['resolution']}_{date}"
+            )
         else:
             outpath = os.path.join(self.outdir, f"VLBI_{self.mode.value}_L{self.obsid}_{date}")
         logger.info(f"Copying results to: {outpath}")
@@ -671,6 +673,11 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
+    # PILOT supports downloading this automatically, but flocs won't allow that (yet) for a bit more
+    # forced checking on the user side.
+    if not os.path.isfile(args["delay_calibrator"]["path"]):
+        logger.critical("Delay calibrator catalogue is not provided or an invalid file.")
+        sys.exit(-1)
     if (not args["model_image"]) and args["use_vlass"]:
         if args["do_auto_delay_selection"]:
             raise NotImplementedError(
