@@ -673,16 +673,16 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    # PILOT supports downloading this automatically, but flocs won't allow that (yet) for a bit more
-    # forced checking on the user side.
-    if not os.path.isfile(args["delay_calibrator"]["path"]):
-        logger.critical("Delay calibrator catalogue is not provided or an invalid file.")
-        sys.exit(-1)
     if (not args["model_image"]) and args["use_vlass"]:
         if args["do_auto_delay_selection"]:
             raise NotImplementedError(
                 "Automatically downloading VLASS staring models for auto delay selection is not yet supported."
             )
+        # PILOT supports downloading this automatically, but we can't allow that here
+        # as we need to download beforehand.
+        if not os.path.isfile(args["delay_calibrator"]["path"]):
+            logger.critical("Delay calibrator catalogue is not provided or an invalid file. Cannot download VLASS models.")
+            sys.exit(-1)
         delay_cat = Table.read(args["delay_calibrator"]["path"])
         delay_ra = delay_cat[0]["RA"]
         delay_dec = delay_cat[0]["DEC"]
