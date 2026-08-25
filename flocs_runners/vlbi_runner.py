@@ -279,6 +279,7 @@ class VLBIJSONConfig:
                     f.write(wrapped_cmd)
                 logger.info("Written temporary jobscript to temp_jobscript.sh")
                 out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+                print(out)
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 out = subprocess.check_output(cmd.split(" ")).decode("utf-8")
