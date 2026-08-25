@@ -53,6 +53,7 @@ class LINCJSONConfig:
         self.outdir = outdir
         self.cluster = detect_compute_cluster()
         self.mspath = mspath
+        self.full_config = {}
 
         filedir = os.path.join(mspath, f"*{ms_suffix}")
         logger.info(f"Searching {filedir}")
@@ -1023,6 +1024,7 @@ def target(
         "outdir",
         "toil_jobstore",
     ]
+    config.full_config = args.copy()
     args_for_linc = args.copy()
     if args_for_linc["output_fullres_data"]:
         logger.info("Full-resolution data requested, updating defaults to:")
