@@ -338,7 +338,8 @@ class LINCJSONConfig:
                 jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", self.rundir]).lower().decode("utf-8")
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
-                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", toil_jobstore]).lower().decode("utf-8")
+                jobstore_parent = os.path.dirname(os.path.abspath(toil_jobstore))
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
             if jobstore_is_beegfs:
                 logger.warning(
