@@ -320,8 +320,11 @@ class VLBIJSONConfig:
             cmd += ["--outdir", get_container_env_var("RESULTSDIR")]
             cmd += ["--tmp-outdir-prefix", get_container_env_var("TMPDIR")]
             if not toil_jobstore:
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", self.rundir]).lower().decode("utf-8")
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
+                jobstore_parent = os.path.dirname(os.path.abspath(toil_jobstore))
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode("utf-8")
                 cmd += ["--jobStore", toil_jobstore]
             cmd += ["--workDir", workdir]
             if is_ceph:
