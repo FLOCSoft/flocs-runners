@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 import cyclopts
 
-from . import ddf_runner, linc_runner, ugmrt_runner, vlbi_runner
+from . import ddf_runner, linc_runner, ugmrt_runner, vlbi_runner, envcheck
 
 
 def main():
     app = cyclopts.App()
+    app.command(envcheck.app, name="env")
     app.command(linc_runner.app, name="linc")
     app.command(ddf_runner.ddf_pipeline, name="ddf-pipeline", group="LOFAR")
     app.command(vlbi_runner.app, name="vlbi")
