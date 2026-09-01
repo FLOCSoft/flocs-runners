@@ -678,45 +678,57 @@ def delay_calibration(
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
     if (not args["model_image"]) and args["use_vlass"]:
-        if args["do_auto_delay_selection"]:
-            raise NotImplementedError(
-                "Automatically downloading VLASS staring models for auto delay selection is not yet supported."
-            )
         # PILOT supports downloading this automatically, but we can't allow that here
         # as we need to download beforehand.
         if not os.path.isfile(args["delay_calibrator"]["path"]):
-            logger.critical("Delay calibrator catalogue is not provided or an invalid file. Cannot download VLASS models.")
+            logger.critical(
+                "Delay calibrator catalogue is not provided or an invalid file. Cannot download VLASS models."
+            )
             sys.exit(-1)
         delay_cat = Table.read(args["delay_calibrator"]["path"])
-        delay_ra = delay_cat[0]["RA"]
-        delay_dec = delay_cat[0]["DEC"]
-        vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
-        if vlass_img:
-            logger.info(f"Found existing VLASS model image {vlass_img[0]}; reusing this.")
+        model_images = []
+        for delay in delay_cat:
+            delay_ra = delay["RA"]
+            delay_dec = delay["DEC"]
+            vlass_name = f"{ra_dec_to_iltj(delay_ra, delay_dec)}_vlass.fits"
+            vlass_img = glob.glob(vlass_name)
+            if vlass_img:
+                logger.info(f"Found existing VLASS model image {vlass_img[0]}; reusing this.")
+                model_images.append(vlass_img[0])
+            else:
+                try:
+                    vlass_download = subprocess.check_output(
+                        f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
+                        shell=True,
+                        text=True,
+                    )
+                    vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*.fits")
+                    if not vlass_img:
+                        raise FileNotFoundError
+                    else:
+                        os.rename(vlass_img[0], vlass_name)
+                        vlass_img = glob.glob(vlass_name)[0]
+                        logger.info(f"Found VLASS model image {vlass_img}.")
+                        model_images.append(vlass_img)
+                except subprocess.CalledProcessError:
+                    logger.warning("VLASS download failed, not providing starting model.")
+                except (FileNotFoundError, IndexError):
+                    logger.warning("VLASS image not found, not providing starting model.")
+            if not args["do_auto_delay_selection"]:
+                break
+        if not args["do_auto_delay_selection"]:
             config.configdict["model_image"] = {
                 "class": "File",
-                "path": os.path.abspath(vlass_img[0]),
+                "path": os.path.abspath(model_images[0]),
             }
         else:
-            try:
-                vlass_download = subprocess.check_output(
-                    f"everystamp download --survey vlass --ra {delay_ra} --dec {delay_dec} --size 0.075 --mode fits",
-                    shell=True,
-                    text=True,
-                )
-                vlass_img = glob.glob(f"VLASS_{delay_ra:.6f}_{delay_dec:.6f}*poststamp.fits")
-                if not vlass_img:
-                    raise FileNotFoundError
-                else:
-                    logger.info(f"Found VLASS model image {vlass_img[0]}.")
-                    config.configdict["model_image"] = {
-                        "class": "File",
-                        "path": os.path.abspath(vlass_img[0]),
-                    }
-            except subprocess.CalledProcessError:
-                logger.warning("VLASS download failed, not providing starting model.")
-            except FileNotFoundError:
-                logger.warning("VLASS image not found, not providing starting model.")
+            config.configdict["starting_skymodel"] = [
+                {
+                    "class": "File",
+                    "path": os.path.abspath(img),
+                }
+                for img in model_images
+            ]
     config.save(f"mslist_{config.obsid}_VLBI_delay-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
