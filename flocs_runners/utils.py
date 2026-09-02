@@ -217,10 +217,10 @@ cd \$TMPDIR
 RUNDIR=\$(mktemp -d -p \$PWD)
 cd \$RUNDIR
 
-flocs-run linc target --runner cwltool --rundir \$PWD --solveralgorithm directioniterative $(realpath $1)
+flocs-run linc target --runner cwltool --rundir \$PWD --solveralgorithm directioniterative --cal-solutions $(realpath $2) $(realpath $1)
 
 cd \$TMPDIR
-rsync -avP \$RUNDIR/LINC_target* $(realpath $2)
+rsync -avP \$RUNDIR/LINC_target* $(realpath $3)
 rm -rf \$RUNDIR
 """
         else:

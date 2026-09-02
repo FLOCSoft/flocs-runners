@@ -260,35 +260,34 @@ class LINCJSONConfig:
             cmd += f"{self.configfile}"
 
             if scheduler == "slurm":
-                if self.cluster == "spider":
-                    slurm_params["cores"] = self.full_config["slurm_cores"]
-                    slurm_params["time"] = self.full_config["slurm_time"]
-                    wrapped_cmd = add_slurm_skeleton(
-                        contents=cmd,
-                        job_name=f"LINC_{self.mode.value}",
-                        cluster=self.cluster,
-                        **slurm_params,
-                    )
-                    with open("temp_jobscript.sh", "w") as f:
-                        f.write(wrapped_cmd)
-                    logger.info("Written temporary jobscript to temp_jobscript.sh")
+                slurm_params["cores"] = self.full_config["slurm_cores"]
+                slurm_params["time"] = self.full_config["slurm_time"]
+                wrapped_cmd = add_slurm_skeleton(
+                    contents=cmd,
+                    job_name=f"LINC_{self.mode.value}",
+                    cluster=self.cluster,
+                    **slurm_params,
+                )
+                with open("temp_jobscript.sh", "w") as f:
+                    f.write(wrapped_cmd)
+                logger.info("Written temporary jobscript to temp_jobscript.sh")
+                if self.mode is self.OBS_TYPE.CALIBRATOR:
                     out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode(
                         "utf-8"
                     )
                     print(out)
-                else:
-                    wrapped_cmd = add_slurm_skeleton(
-                        contents=cmd,
-                        job_name=f"LINC_{self.mode.value}",
-                        cluster=self.cluster,
-                        **slurm_params,
-                    )
-                    with open("temp_jobscript.sh", "w") as f:
-                        f.write(wrapped_cmd)
-                    logger.info("Written temporary jobscript to temp_jobscript.sh")
-                    out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+                elif self.mode is self.OBS_TYPE.TARGET:
+                    out = subprocess.check_output(
+                        [
+                            "bash",
+                            "temp_jobscript.sh",
+                            self.mspath,
+                            self.full_config["cal_solutions"]["path"],
+                            self.outdir,
+                        ]
+                    ).decode("utf-8")
                     print(out)
-                    self.move_results_from_rundir()
+                self.move_results_from_rundir()
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 try:
@@ -341,7 +340,9 @@ class LINCJSONConfig:
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
                 jobstore_parent = os.path.dirname(os.path.abspath(toil_jobstore))
-                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode("utf-8")
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode(
+                    "utf-8"
+                )
                 cmd += ["--jobStore", toil_jobstore]
             if jobstore_is_beegfs:
                 logger.warning(
