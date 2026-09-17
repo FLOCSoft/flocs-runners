@@ -460,7 +460,7 @@ def delay_calibration(
     image_catalogue: Annotated[
         Optional[dict],
         Parameter(
-            help="The image catalogue (in FITS or CSV format) containing the target directions.",
+            help="The image catalogue (in FITS or CSV format) containing e.g. LoTSS sources in the field. Used to determine if there are bright sources near the delay calibrator.",
             converter=cwl_file,
         ),
     ] = cwl_file(
