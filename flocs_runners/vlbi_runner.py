@@ -324,7 +324,9 @@ class VLBIJSONConfig:
                 cmd += ["--jobStore", os.path.join(self.rundir, "jobstore")]
             else:
                 jobstore_parent = os.path.dirname(os.path.abspath(toil_jobstore))
-                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode("utf-8")
+                jobstore_is_beegfs = "beegfs" in subprocess.check_output(["df", jobstore_parent]).lower().decode(
+                    "utf-8"
+                )
                 cmd += ["--jobStore", toil_jobstore]
             cmd += ["--workDir", workdir]
             if is_ceph:
@@ -451,7 +453,10 @@ def delay_calibration(
     delay_calibrator: Annotated[
         Optional[dict],
         Parameter(help="A delay calibrator catalogue in CSV format.", converter=cwl_file),
-    ] = None,
+    ] = cwl_file(
+        str,
+        [Token(value=os.path.abspath("delay_calibrators.csv"))],
+    ),
     image_catalogue: Annotated[
         Optional[dict],
         Parameter(
@@ -460,7 +465,7 @@ def delay_calibration(
         ),
     ] = cwl_file(
         str,
-        [Token(value=os.path.abspath("lotss_catalogue.csv"))],
+        [Token(value=os.path.abspath("image_catalogue.csv"))],
     ),
     ATeam_skymodel: Annotated[
         Optional[dict],
