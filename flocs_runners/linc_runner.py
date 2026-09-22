@@ -301,6 +301,7 @@ class LINCJSONConfig:
                     if e.stderr:
                         with open(f"log_LINC_{self.mode.value}_err.txt", "wb") as f:
                             f.write(e.stderr)
+                self.move_results_from_rundir()
         elif runner == "toil":
             verify_toil()
             verify_slurm_environment_toil()
