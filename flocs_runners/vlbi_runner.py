@@ -467,20 +467,6 @@ def delay_calibration(
         str,
         [Token(value=os.path.abspath("image_catalogue.csv"))],
     ),
-    ATeam_skymodel: Annotated[
-        Optional[dict],
-        Parameter(help="File path to the A-Team skymodel.", converter=cwl_file),
-    ] = cwl_file(
-        str,
-        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "skymodels/A-Team.skymodel"))],
-    ),
-    rfi_strategy: Annotated[
-        Optional[dict],
-        Parameter(help="File path to the strategy file for AOFlagger.", converter=cwl_file),
-    ] = cwl_file(
-        str,
-        [Token(value=os.path.join(os.environ["LINC_DATA_ROOT"], "rfistrategies/lofar-hba-wideband.lua"))],
-    ),
     configfile: Annotated[
         Optional[dict],
         Parameter(
@@ -507,22 +493,10 @@ def delay_calibration(
             converter=cwl_file,
         ),
     ] = None,
-    filter_baselines: Annotated[
-        Optional[str],
-        Parameter(help="The default filter constraints for the dp3_prep_target step."),
-    ] = "*&",
-    flag_baselines: Annotated[
-        Optional[List[str]],
-        Parameter(help="The baselines to be flagged by DP3. Can be a pattern, e.g. [ CS013HBA*&&* ]."),
-    ] = None,
     phasesol: Annotated[
         Optional[str],
         Parameter(help="The name of the target solution table to use from the solset input."),
     ] = "TGSSphase",
-    reference_stationSB: Annotated[
-        Optional[int],
-        Parameter(help="Subbands are concatenated in the concatenate-flag workflow relative to this station subband."),
-    ] = 104,
     number_cores: Annotated[
         Optional[int],
         Parameter(help="Number of cores to use per job for tasks with high I/O or memory."),
@@ -573,15 +547,13 @@ def delay_calibration(
             converter=cwl_file,
         ),
     ] = None,
-    rm_correction: Annotated[
-        Optional[Literal["spinifex", "RMextract"]],
-        Parameter(
-            help="Name of the rotation measure solution table.",
-        ),
-    ] = None,
     do_auto_delay_selection: Annotated[
         Optional[bool],
         Parameter(help="Automatically select the best candidate delay calibrator(s) based on phasediff scores."),
+    ] = False,
+    calibrate_leakage: Annotated[
+        Optional[bool],
+        Parameter(help="Add leakage calibration to the DI configuration file."),
     ] = False,
     select_best_n_delay_calibrators: Annotated[
         Optional[int],
