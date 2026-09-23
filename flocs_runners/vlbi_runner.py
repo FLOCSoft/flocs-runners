@@ -1006,13 +1006,19 @@ def dd_calibration(
             converter=cwl_file,
         ),
     ] = None,
-    dd_dutch_solutions: Annotated[
+    dd_precorrections: Annotated[
         Optional[dict],
         Parameter(
-            help="Provide already obtained direction-dependent h5parm solutions for the Dutch LOFAR array to pre-apply before international LOFAR calibration.",
+            help="Provide already obtained direction-dependent h5parm solutions pre-apply before international LOFAR calibration.",
             converter=cwl_file,
         ),
     ] = None,
+    freeze_dutch_solutions: Annotated[
+        bool,
+        Parameter(
+            help="If set, Dutch station solutions will be always be reset during the DD calibration. Useful if the pre-applied solution contain final Dutch station corrections."
+        ),
+    ] = False,
     validate: Annotated[
         Optional[bool],
         Parameter(
@@ -1035,12 +1041,20 @@ def dd_calibration(
         Optional[bool],
         Parameter(help="If set to true the pipeline will perform direction-dependent calibrator selection."),
     ] = True,
-    phasediff_score: Annotated[
+    phasediff_score_strong: Annotated[
         float,
+        Parameter(help="Upper bound to the phasediff-score for strong calibrator selection."),
+    ] = 1.5,
+    phasediff_score_weak: Annotated[
+        float,
+        Parameter(help="Lower bound to the phasediff-score for weak calibrator selection."),
+    ] = 2.6,
+    keep_close_sources: Annotated[
+        bool,
         Parameter(
-            help="Phasediff-score for calibrator selection <2.3 good for DD-calibrators and <0.7 good for DI-calibrators. Only used when dd_selection==true."
+            help="Toggles whether to still image sources that are too close to each other for reliable calibration. Useful for e.g. LoTSS-HR or when calibrator level sources are too close to each other to be kept for dd calibration."
         ),
-    ] = 2.3,
+    ] = False,
     custom_phasediff_score_csv: Annotated[
         Optional[dict],
         Parameter(
