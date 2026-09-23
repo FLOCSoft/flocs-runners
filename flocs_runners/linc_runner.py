@@ -148,8 +148,8 @@ class LINCJSONConfig:
             if "snap8" in self.rundir:
                 logger.info("Detected COSMA snap8, bombs away:")
                 if self.mode is self.OBS_TYPE.CALIBRATOR:
-                    logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 1")
-                    self.configdict["max_dp3_threads"] = 1
+                    logger.info(f"max-dp3-threads {self.configdict['max_dp3_threads']} -> 3")
+                    self.configdict["max_dp3_threads"] = 3
         elif self.cluster == "spider":
             if os.path.abspath(self.rundir).startswith("/project"):
                 logger.info("Detected Spider /project")
@@ -219,6 +219,7 @@ class LINCJSONConfig:
         runner: str = "toil",
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
+        workdir_is_absolute: bool = False,
         slurm_params: dict = {},
         restart: bool = False,
         record_stats: bool = False,
@@ -238,7 +239,7 @@ class LINCJSONConfig:
         else:
             raise RuntimeError("Something unexpected went wrong with the config file.")
         if not restart:
-            self.setup_rundir(workdir)
+            self.setup_rundir(workdir, workdir_is_absolute)
             self.restarting = False
         else:
             self.rundir = workdir
@@ -275,9 +276,9 @@ class LINCJSONConfig:
                     f.write(wrapped_cmd)
                 logger.info("Written temporary jobscript to temp_jobscript.sh")
                 if self.mode is self.OBS_TYPE.CALIBRATOR:
-                    out = subprocess.check_output(["bash", "temp_jobscript.sh", self.mspath, self.outdir]).decode(
-                        "utf-8"
-                    )
+                    out = subprocess.check_output(
+                        ["bash", "temp_jobscript.sh", self.mspath, self.outdir, self.rundir]
+                    ).decode("utf-8")
                     print(out)
                 elif self.mode is self.OBS_TYPE.TARGET:
                     out = subprocess.check_output(
@@ -290,7 +291,6 @@ class LINCJSONConfig:
                         ]
                     ).decode("utf-8")
                     print(out)
-                self.move_results_from_rundir()
             elif scheduler == "singleMachine":
                 logger.info(f"Running command:\n{cmd}")
                 try:
@@ -400,9 +400,19 @@ class LINCJSONConfig:
             os.environ["APPTAINERENV_PREPEND_PATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts"
             os.environ["APPTAINERENV_PYTHONPATH"] = f"{os.environ['LINC_DATA_ROOT']}/scripts:$PYTHONPATH"
             if not self.restarting:
-                os.mkdir(os.environ["APPTAINERENV_LOGSDIR"])
-                os.mkdir(os.environ["APPTAINERENV_TMPDIR"])
-                os.mkdir(os.environ["APPTAINERENV_RESULTSDIR"])
+                # If this failed we have likely indicated the working directory as absolute.
+                try:
+                    os.mkdir(os.environ["APPTAINERENV_LOGSDIR"])
+                except FileExistsError:
+                    pass
+                try:
+                    os.mkdir(os.environ["APPTAINERENV_TMPDIR"])
+                except FileExistsError:
+                    pass
+                try:
+                    os.mkdir(os.environ["APPTAINERENV_RESULTSDIR"])
+                except FileExistsError:
+                    pass
             os.environ["PATH"] = os.environ["APPTAINERENV_PREPEND_PATH"] + ":" + os.environ["PATH"]
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = (
@@ -801,6 +811,7 @@ def calibrator(
         "outdir",
         "toil_jobstore",
         "use_node_scratch",
+        "rundir_is_absolute",
     ]
     config.full_config = args.copy()
     args_for_linc = args.copy()
@@ -829,6 +840,7 @@ def calibrator(
                 "memory": args["slurm_memory"],
             },
             workdir=args["rundir"],
+            workdir_is_absolute=args["rundir_is_absolute"],
             restart=args["restart"],
             record_stats=args["record_toil_stats"],
             toil_jobstore=args["toil_jobstore"],
