@@ -128,14 +128,17 @@ class LINCJSONConfig:
         logger.info(f"Written configuration to {fname}")
         self.configfile = fname
 
-    def setup_rundir(self, workdir):
-        if "calibrator" in self.configfile:
-            self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_calibrator_{self.obsid}.", dir=workdir)
-        elif "target" in self.configfile:
-            self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_target_{self.obsid}.", dir=workdir)
+    def setup_rundir(self, workdir, is_absolute: bool = False):
+        if is_absolute:
+            self.rundir = workdir
         else:
-            logger.warning("Unknown config file passed; exiting.")
-            sys.exit(-1)
+            if "calibrator" in self.configfile:
+                self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_calibrator_{self.obsid}.", dir=workdir)
+            elif "target" in self.configfile:
+                self.rundir = tempfile.mkdtemp(prefix=f"tmp.LINC_target_{self.obsid}.", dir=workdir)
+            else:
+                logger.warning("Unknown config file passed; exiting.")
+                sys.exit(-1)
 
     def tune_to_cluster(self, runner: str):
         if not hasattr(self, "rundir"):
@@ -717,6 +720,10 @@ def calibrator(
         str,
         Parameter(help="CWL runner to use."),
     ] = "cwltool",
+    rundir_is_absolute: Annotated[
+        bool,
+        Parameter(help="Consider the rundir to be absolute and skip making a temporary directory inside it."),
+    ] = False,
     rundir: Annotated[
         str,
         Parameter(help="Directory to run in."),
