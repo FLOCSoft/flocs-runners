@@ -242,22 +242,15 @@ rm -rf \$RUNDIR
 {contents}
 """
     else:
-        sbatch_line = "#SBATCH "
-        if time:
-            sbatch_line += f"-t {time} "
-        if cores:
-            sbatch_line += f"-c {cores} "
-        if job_name:
-            sbatch_line += f"--job-name {job_name} "
-        if queue:
-            sbatch_line += f"-p {queue} "
-        if account:
-            sbatch_line += f"-A {account} "
-        if memory:
-            sbatch_line += f"--mem {memory}GB "
-        wrapped = f"""#!/bin/bash
-{sbatch_line}
-{contents}
+        if "calibrator" in job_name:
+            wrapped = rf"""sbatch <<EOT
+#!/usr/bin/bash
+#SBATCH -N 1 -c {cores} -t {time} -J LINC_calibrator -A {account} -p {queue}
+flocs-run linc calibrator --runner cwltool --rundir "$3" --rundir-is-absolute --solveralgorithm directioniterative "$(realpath $1)"
+
+rsync -avP $3/LINC_calib* "$(realpath $2)"
+rm -rf $3
+EOT
 """
     return wrapped
 
