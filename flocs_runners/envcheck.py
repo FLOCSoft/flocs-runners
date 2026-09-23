@@ -1,6 +1,7 @@
 from cyclopts import App
 import os
 import pathlib
+import shutil
 import structlog
 
 app = App(group="Other")
@@ -14,6 +15,8 @@ essential_variables = [
     "VLBI_DATA_ROOT",
 ]
 
+essential_commands = ["cwltool", "toil-cwl-runner", "node"]
+
 
 def check_variable(var):
     if var in os.environ:
@@ -24,6 +27,15 @@ def check_variable(var):
 
 @app.command
 def check():
+    logger.info("Checking software:")
+    for cmd in essential_commands:
+        if not shutil.which(f"{cmd}"):
+            logger.critical(f"{cmd} not found.")
+        else:
+            logger.info(f"{cmd} found.")
+
+    print()
+    logger.info("Checking environment variables:")
     for var in essential_variables:
         check_variable(var)
     try:
