@@ -246,10 +246,7 @@ rm -rf \$RUNDIR
             wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
 #SBATCH -N 1 -c {cores} -t {time} -J LINC_calibrator -A {account} -p {queue}
-flocs-run linc calibrator --runner cwltool --rundir "$3" --rundir-is-absolute --solveralgorithm directioniterative "$(realpath $1)"
-
-rsync -avP $3/LINC_calib* "$(realpath $2)"
-rm -rf $3
+flocs-run linc calibrator --runner cwltool --rundir "$3" --rundir-is-absolute --outdir "$(realpath $2)" --solveralgorithm directioniterative "$(realpath $1)"
 EOT
 """
     return wrapped
