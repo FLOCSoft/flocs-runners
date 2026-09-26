@@ -654,7 +654,7 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    if (not args["model_image"]) and args["use_vlass"]:
+    if (args["model_image"] is None) and args["use_vlass"]:
         # PILOT supports downloading this automatically, but we can't allow that here
         # as we need to download beforehand.
         if not os.path.isfile(args["delay_calibrator"]["path"]):
