@@ -998,6 +998,10 @@ def dd_calibration(
             converter=cwl_file,
         ),
     ],
+    model_cache: Annotated[
+        str,
+        Parameter(help="Neural network cache directory. Used for image validation."),
+    ],
     ms_suffix: Annotated[str, Parameter(help="Extension to look for when searching `mspath` for MSes.")] = ".MS",
     delay_solset: Annotated[
         Optional[dict],
@@ -1066,10 +1070,6 @@ def dd_calibration(
         float,
         Parameter(help="Peak flux (Jy/beam) cut to pre-select sources from catalogue."),
     ] = 0.025,
-    model_cache: Annotated[
-        Optional[str],
-        Parameter(help="Neural network cache directory."),
-    ] = None,
     max_rejected_fraction: Annotated[
         float,
         Parameter(
