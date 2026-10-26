@@ -258,9 +258,11 @@ EOT
             sbatch_line += f"-A {account} "
         if memory:
             sbatch_line += f"--mem {memory}GB "
-        wrapped = f"""#!/bin/bash
+        wrapped = f"""sbatch <<EOT
+#!/bin/bash
 {sbatch_line}
 {contents}
+EOT
 """
     return wrapped
 
