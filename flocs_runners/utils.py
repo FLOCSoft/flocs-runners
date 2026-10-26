@@ -222,6 +222,7 @@ flocs-run linc target --runner cwltool --rundir \$PWD --solveralgorithm directio
 cd \$TMPDIR
 rsync -avP \$RUNDIR/LINC_target* $(realpath $3)
 rm -rf \$RUNDIR
+EOT
 """
         else:
             sbatch_line = "#SBATCH "
@@ -237,9 +238,11 @@ rm -rf \$RUNDIR
                 sbatch_line += f"-A {account} "
             if memory:
                 sbatch_line += f"--mem {memory}GB "
-            wrapped = f"""#!/bin/bash
+            wrapped = f"""sbatch <<EOT
+#!/bin/bash
 {sbatch_line}
 {contents}
+EOT
 """
     else:
         sbatch_line = "#SBATCH "
