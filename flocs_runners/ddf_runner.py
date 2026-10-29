@@ -7,8 +7,9 @@ from .utils import (
 import glob
 import os
 import pathlib
-import structlog
+import shlex
 import shutil
+import structlog
 import subprocess
 import sys
 import tempfile
@@ -52,12 +53,72 @@ class DDFConfig:
         self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
     def move_results_from_rundir(self):
+        source = self.rundir if self.restarting else pathlib.Path(self.rundir).parent.absolute().as_posix()
+        outpath = self.get_results_path()
+        logger.info(f"Copying results from {source} to: {outpath}")
+        shutil.move(source, outpath)
+
+    def get_results_path(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
-        outpath = os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}")
-        logger.info(f"Copying results to: {outpath}")
-        # Due to how we run there is a weird double tempdir for ddf-pipeline runs, so grab the parent instead.
-        parent = pathlib.Path(self.rundir).parent.absolute().as_posix()
-        shutil.move(parent, outpath)
+        return os.path.abspath(os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}"))
+
+    def submit_restart(self, ddf_container: str, slurm_params: dict):
+        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
+        outpath = self.get_results_path()
+
+        directives = []
+        if slurm_params.get("time"):
+            directives.append(f"#SBATCH -t {slurm_params['time']}")
+        if slurm_params.get("cores"):
+            directives.append(f"#SBATCH -c {slurm_params['cores']}")
+        if slurm_params.get("queue"):
+            directives.append(f"#SBATCH -p {slurm_params['queue']}")
+        if slurm_params.get("account"):
+            directives.append(f"#SBATCH -A {slurm_params['account']}")
+        if slurm_params.get("memory"):
+            directives.append(f"#SBATCH --mem {slurm_params['memory']}GB")
+        directives.append(f"#SBATCH --job-name DDF-pipeline_L{self.obsid}")
+
+        script = "\n".join(
+            [
+                "#!/bin/bash",
+                *directives,
+                f"cd {shlex.quote(self.rundir)} || exit $?",
+                f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
+                "status=$?",
+                "if [ \"$status\" -eq 0 ]; then",
+                "    cd / || exit $?",
+                f"    mv -- {shlex.quote(self.rundir)} {shlex.quote(outpath)} || exit $?",
+                "fi",
+                "exit \"$status\"",
+                "",
+            ]
+        )
+        with open("temp_jobscript.sh", "w") as jobscript:
+            jobscript.write(script)
+        logger.info("Written restart jobscript to temp_jobscript.sh")
+        out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+        print(out)
+
+    def run_restart(self, ddf_container: str, scheduler: str, slurm_params: dict):
+        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        if scheduler in {"slurm", "slurm-srun"}:
+            self.submit_restart(ddf_container, slurm_params)
+            return
+        if scheduler != "singleMachine":
+            raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
+
+        log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
+        logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(command)}")
+        try:
+            out = subprocess.check_output(command, cwd=self.rundir, stderr=subprocess.STDOUT)
+            with open(log_path, "wb") as log_file:
+                log_file.write(out)
+            self.move_results_from_rundir()
+        except subprocess.CalledProcessError as error:
+            with open(log_path, "wb") as log_file:
+                log_file.write(error.output or b"")
 
     def run_workflow(
         self,
@@ -68,16 +129,25 @@ class DDFConfig:
         restart: bool = False,
         use_node_scratch: bool = False,
     ):
-        if not restart and not use_node_scratch:
-            self.setup_rundir(workdir)
+        if restart:
+            self.rundir = os.path.abspath(workdir)
+            self.restarting = True
+            if not os.path.isdir(self.rundir):
+                raise NotADirectoryError(f"DDF restart directory does not exist: {self.rundir}")
+            logger.info(f"Attempting to restart existing run from {self.rundir}.")
+        elif use_node_scratch:
+            self.rundir = workdir
             self.restarting = False
         else:
-            self.rundir = workdir
-            self.restarting = True
-            logger.info(f"Attempting to restart existing run from {self.rundir}.")
+            self.setup_rundir(workdir)
+            self.restarting = False
         self.setup_apptainer_variables(self.rundir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
+
+        if restart:
+            self.run_restart(ddf_container, scheduler, slurm_params)
+            return
 
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
@@ -220,8 +290,6 @@ def ddf_pipeline(
 ):
     logger.info("Starting ddf-pipeline")
     args = locals()
-    if args["restart"]:
-        raise NotImplementedError("Restarting ddf runs is not yet supported.")
     config = DDFConfig(
         args["mspath"],
         os.path.abspath(args["config_file"]),
