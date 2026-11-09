@@ -198,6 +198,7 @@ def add_slurm_skeleton(
             wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
 #SBATCH -N 1 -c {cores} -t {time} -J LINC_calibrator -A {account} -p {queue}
+set -e
 cd \$TMPDIR
 RUNDIR=\$(mktemp -d -p \$PWD)
 cd \$RUNDIR
@@ -213,6 +214,7 @@ EOT
             wrapped = rf"""sbatch <<EOT
 #!/usr/bin/bash
 #SBATCH -N 1 -c {cores} -t {time} -J LINC_target -A {account} -p {queue}
+set -e
 cd \$TMPDIR
 RUNDIR=\$(mktemp -d -p \$PWD)
 cd \$RUNDIR
