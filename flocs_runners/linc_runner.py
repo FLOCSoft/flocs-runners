@@ -304,7 +304,7 @@ class LINCJSONConfig:
                     if e.stderr:
                         with open(f"log_LINC_{self.mode.value}_err.txt", "wb") as f:
                             f.write(e.stderr)
-                self.move_results_from_rundir()
+                    raise
         elif runner == "toil":
             verify_toil()
             verify_slurm_environment_toil()
@@ -386,6 +386,7 @@ class LINCJSONConfig:
                 if e.stderr:
                     with open(f"log_LINC_{self.mode.value}_err.txt", "wb") as f:
                         f.write(e.stderr)
+                raise
 
     def setup_apptainer_variables(self, workdir):
         try:
@@ -414,7 +415,7 @@ class LINCJSONConfig:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
                     + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{workdir}"
+                    + f",{os.path.dirname(workdir)}"
                     + f",{os.environ['APPTAINER_BINDPATH']}"
                 )
         elif "singularity" in out:
