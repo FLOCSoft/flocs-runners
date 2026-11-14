@@ -5,6 +5,10 @@ from .utils import (
     get_container_env_var,
 )
 import glob
+import configparser
+import hashlib
+import json
+from http.client import HTTPException
 import os
 import pathlib
 import shlex
@@ -12,9 +16,17 @@ import shutil
 import structlog
 import subprocess
 import sys
+import tarfile
 import tempfile
+import zlib
 from pathlib import Path
-from time import gmtime, strftime
+from time import gmtime, sleep, strftime
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import URLError
+import numpy as np
+from casacore.tables import table
+from astropy.io import fits
 from cyclopts import Parameter
 from typing_extensions import Annotated, Optional
 
@@ -38,6 +50,7 @@ class DDFConfig:
         filedir = os.path.join(os.path.abspath(mspath), "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
         files = sorted(glob.glob(filedir))
+        self.msfiles = files
         logger.info(f"Found {len(files)} files")
         if not len(files):
             logger.critical("No input MSes found")
@@ -48,12 +61,304 @@ class DDFConfig:
         except IndexError:
             self.obsid = "unknown"
 
+    @staticmethod
+    def _file_digest(path, algorithm="sha256"):
+        digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
+        with open(path, "rb") as stream:
+            for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+                if algorithm == "adler32":
+                    digest = zlib.adler32(block, digest)
+                else:
+                    digest.update(block)
+        return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
+
+    def _fetch_dr3_archive(self, entry, cache):
+        """Verify a cached archive, or publish a complete, checksum-verified download."""
+        archive = cache / entry["key"]
+        algorithm, expected = entry["checksum"].split(":", 1)
+        if archive.is_file():
+            if archive.stat().st_size == entry["size"] and self._file_digest(archive, algorithm) == expected:
+                return archive
+            logger.warning(f"Removing invalid cached DR3 archive: {archive}")
+            archive.unlink()
+        temporary = None
+        try:
+            while True:
+                response = urlopen(entry["links"]["content"], timeout=60)
+                if response.status != 202:
+                    break
+                delay = response.headers.get("Retry-After", "60")
+                response.close()
+                logger.info(f"Waiting for SURF to restore {entry['key']} from tape")
+                sleep(max(1, float(delay)))
+            with response:
+                if response.status != 200:
+                    raise ValueError(f"Unexpected SURF download status: {response.status}")
+                digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
+                size = 0
+                with tempfile.NamedTemporaryFile(dir=cache, suffix=".part", delete=False) as stream:
+                    temporary = Path(stream.name)
+                    for block in iter(lambda: response.read(8 * 1024 * 1024), b""):
+                        stream.write(block)
+                        if algorithm == "adler32":
+                            digest = zlib.adler32(block, digest)
+                        else:
+                            digest.update(block)
+                        size += len(block)
+                        if size > entry["size"]:
+                            raise ValueError(f"SURF download exceeds its published size: {entry['key']}")
+                actual = f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
+                if size != entry["size"] or actual != expected:
+                    raise ValueError(f"Downloaded DR3 archive failed its size/checksum: {entry['key']}")
+            os.replace(temporary, archive)
+            return archive
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def fetch_dr3_model(self):
+        """Fetch complete native model paths for the exact MS field; raise if unavailable.
+
+        Existing tape archives are recalled and waited for. An absent field, failed
+        download or incomplete product set leaves full mode selected.
+        Successfully downloaded products remain cached for subsequent attempts.
+        """
+        names = set()
+        for ms in self.msfiles:
+            with table(ms + "::OBSERVATION", readonly=True, ack=False) as observation:
+                for row in range(observation.nrows()):
+                    target = observation.getcell("LOFAR_TARGET", row)
+                    names.update(str(value).strip() for value in np.asarray(target).ravel())
+        if len(names) != 1:
+            raise ValueError(f"DR3 reuse requires one exact field name; found {sorted(names)}")
+        field = names.pop()
+        query = urlencode({"q": f'"{field}"', "size": 100})
+        with urlopen("https://repository.surf.nl/api/records?" + query, timeout=30) as response:
+            hits = json.load(response)["hits"]["hits"]
+        matches = [record for record in hits
+                   if record.get("custom_fields", {}).get("collection:metadata", {}).get("id") == field
+                   and record["custom_fields"]["collection:metadata"].get("$schema")
+                   == "https://repository.surf.nl/schema/lotss-dr3"]
+        if len(matches) != 1:
+            raise ValueError(f"Expected one exact SURF DR3 record for {field}; found {len(matches)}")
+        with urlopen("https://repository.surf.nl/api/records/" + matches[0]["id"], timeout=30) as response:
+            record = json.load(response)
+        if record.get("custom_fields", {}).get("collection:metadata", {}).get("id") != field:
+            raise ValueError("SURF record field differs from the requested MS field")
+        # Never use an archive-provided path for extraction or a different/nearest field.
+        cache = Path(self.outdir).resolve() / ".dr3-models" / record["id"]
+        cache.mkdir(parents=True, exist_ok=True)
+        stem = "image_full_ampphase_di_m.NS"
+        required = [stem + ".DicoModel", stem + ".mask01.fits", stem + ".app.restored.fits",
+                    "image_dirin_SSD_m.npy.ClusterCat.npy"]
+        manifest = cache / "dr3-model.json"
+        entries = record.get("files", {}).get("entries", {})
+        missing = {"images.tar", "uv_misc.tar"} - entries.keys()
+        if missing:
+            raise ValueError(f"Missing DR3 archives for {field}: {sorted(missing)}; full DDF is required")
+        published = {key: value["checksum"] for key, value in entries.items()
+                     if key in ("images.tar", "uv_misc.tar", "misc.tar")}
+        ready = False
+        if manifest.exists():
+            saved = json.loads(manifest.read_text())
+            ready = saved.get("field") == field and saved.get("archives") == published
+            if ready:
+                ready = all((cache / name).is_file()
+                            and self._file_digest(cache / name) == saved.get("files", {}).get(name)
+                            for name in required)
+        if not ready:
+            # Start both recalls before waiting on either large archive.
+            for name in ("images.tar", "uv_misc.tar"):
+                try:
+                    request = Request(entries[name]["links"]["content"], headers={"Range": "bytes=0-0"})
+                    with urlopen(request, timeout=60):
+                        pass
+                except (OSError, URLError, HTTPException) as error:
+                    logger.warning(f"DR3 recall request for {name} failed; will retry at download: {error}")
+            extracted = set()
+            for name in ("images.tar", "uv_misc.tar", "misc.tar"):
+                if name not in entries:
+                    continue
+                logger.info(f"Fetching DR3 {name} for exact field {field}")
+                try:
+                    archive = self._fetch_dr3_archive(entries[name], cache)
+                    with tarfile.open(archive, "r:") as bundle:
+                        members = {}
+                        for member in bundle:
+                            basename = Path(member.name).name
+                            if basename in required:
+                                if basename in members or not member.isfile():
+                                    raise ValueError(f"Ambiguous or non-regular DR3 model member: {member.name}")
+                                members[basename] = member
+                        for basename, member in members.items():
+                            with bundle.extractfile(member) as source:
+                                with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
+                                    staged = Path(target.name)
+                                    shutil.copyfileobj(source, target)
+                            if staged.stat().st_size != member.size:
+                                staged.unlink()
+                                raise ValueError(f"Incomplete extracted model file: {basename}")
+                            os.replace(staged, cache / basename)
+                            extracted.add(basename)
+                except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
+                    logger.warning(f"DR3 {name} unavailable for {field}: {error}")
+                if set(required) <= extracted:
+                    break
+            if not set(required) <= extracted:
+                raise ValueError(f"Incomplete DR3 products for {field}: missing {sorted(set(required) - extracted)}")
+
+        with fits.open(cache / required[2], memmap=True) as image, fits.open(cache / required[1], memmap=True) as mask:
+            header = image[0].header
+            for key in ("NAXIS1", "NAXIS2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CDELT1", "CDELT2"):
+                if not np.isclose(header[key], mask[0].header[key], rtol=0, atol=1e-9):
+                    raise ValueError(f"DR3 image/mask geometry differs: {key}")
+            with table(self.msfiles[0] + "::FIELD", readonly=True, ack=False) as msfield:
+                ra, dec = np.degrees(np.asarray(msfield.getcell("PHASE_DIR", 0)).reshape(-1, 2)[0])
+            from astropy.coordinates import SkyCoord
+            centre = SkyCoord(header["CRVAL1"], header["CRVAL2"], unit="deg")
+            if SkyCoord(ra, dec, unit="deg").separation(centre).arcsec > 1:
+                raise ValueError("DR3 model phase centre differs from the input MS")
+        clusters = np.load(cache / required[3], allow_pickle=False)
+        if not len(clusters) or not clusters.dtype.names or not {"ra", "dec"} <= set(clusters.dtype.names):
+            raise ValueError("Invalid DR3 cluster catalogue")
+        if not np.isfinite(clusters["ra"]).all() or not np.isfinite(clusters["dec"]).all():
+            raise ValueError("Non-finite DR3 calibration directions")
+        if not ready:
+            contents = {"field": field, "record": record["links"]["self_html"],
+                        "archives": published, "files": {name: self._file_digest(cache / name) for name in required}}
+            with tempfile.NamedTemporaryFile(mode="w", dir=cache, delete=False) as stream:
+                json.dump(contents, stream, indent=2)
+                staged = Path(stream.name)
+            os.replace(staged, manifest)
+        return {"field": field, "cache": cache, "model": cache / required[0],
+                "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
+
+    def _compatible_dr3_model(self, model, container):
+        """Validate the pickle in DDF's Python and add only missing legacy defaults."""
+        compatible = model.with_name(model.stem + ".compatible.DicoModel")
+        code = """
+import json, pickle, sys
+with open(sys.argv[1], 'rb') as stream:
+    model = pickle.load(stream, encoding='latin-1')
+if not model.get('GD') or 'ModelShape' not in model or not len(model.get('Comp', {})):
+    raise ValueError('Invalid DicoModel')
+added = []
+for section, values in {
+    'Weight': {'EnableSigmoidTaper': 0, 'SigmoidTaperInnerCutoff': 0,
+               'SigmoidTaperOuterCutoff': 0, 'SigmoidTaperInnerRolloffStrength': 0.5,
+               'SigmoidTaperOuterRolloffStrength': 0.5},
+    'Data': {'Dask': False},
+}.items():
+    for key, value in values.items():
+        if key not in model['GD'].setdefault(section, {}):
+            model['GD'][section][key] = value
+            added.append(section + '.' + key)
+with open(sys.argv[2], 'wb') as stream:
+    pickle.dump(model, stream)
+print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
+      'npix': int(model['GD']['Image']['NPix']), 'cell': float(model['GD']['Image']['Cell'])}))
+"""
+        with tempfile.NamedTemporaryFile(dir=model.parent, delete=False) as stream:
+            staged = Path(stream.name)
+        try:
+            result = subprocess.run(["apptainer", "exec", "--bind", f"{model.parent}:{model.parent}",
+                                     container, "python3", "-c", code, str(model), str(staged)],
+                                    check=True, capture_output=True, text=True)
+            logger.info(result.stdout.strip())
+            information = json.loads(next(line[len("DR3_MODEL_INFO "):]
+                                         for line in result.stdout.splitlines() if line.startswith("DR3_MODEL_INFO ")))
+            os.replace(staged, compatible)
+        finally:
+            staged.unlink(missing_ok=True)
+        return compatible, information
+
+    def prepare_dr3_config(self, container):
+        """Choose lite/full once, retaining a derived config and the selection reason."""
+        original = Path(self.ddfconfig)
+        marker = original.with_suffix(".mode.json")
+        if marker.is_file():
+            decision = json.loads(marker.read_text())
+            if decision.get("config_sha256") == self._file_digest(original):
+                logger.info(f"Reusing prepared DDF {decision['mode']} configuration: {original}")
+                return
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        with original.open() as stream:
+            config.read_file(stream)
+        if config.get("inputmodel", "basedicomodel", fallback="").strip().lower() not in ("", "none"):
+            logger.info("Using the explicitly configured input sky model")
+            return
+        mode, reason = "full", "No complete usable exact-field DR3 model"
+        try:
+            products = self.fetch_dr3_model()
+            if products:
+                compatible, information = self._compatible_dr3_model(products["model"], container)
+                if (config.getint("image", "imsize", fallback=20000) != information["npix"]
+                        or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
+                    raise ValueError("Requested image size/pixel scale differs from the DR3 model")
+                if config.get("image", "phasecenter", fallback="").strip().lower() not in ("", "none"):
+                    raise ValueError("Explicit image phase centre supplied; using a full run")
+                if not config.has_section("inputmodel"):
+                    config.add_section("inputmodel")
+                config.set("inputmodel", "basedicomodel", str(compatible.with_suffix("")))
+                config.set("inputmodel", "basemaskname", str(products["mask"]))
+                config.set("inputmodel", "baseimagename", str(products["image"])[:-len(".app.restored.fits")])
+                if not config.has_section("image"):
+                    config.add_section("image")
+                config.set("image", "clusterfile", str(products["clusters"]))
+                mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
+        except (OSError, URLError, HTTPException, EOFError, ValueError, KeyError,
+                tarfile.TarError, subprocess.CalledProcessError) as error:
+            reason = error.stderr.strip()[-500:] if isinstance(error, subprocess.CalledProcessError) else str(error)
+            logger.warning(f"DR3 model reuse unavailable; selecting full DDF run: {reason}")
+        if not config.has_section("data"):
+            config.add_section("data")
+        config.set("data", "colname", "DATA")
+        for section, options in {"control": ("polcubes", "stokesv"), "spectra": ("do_dynspec",)}.items():
+            if not config.has_section(section):
+                config.add_section(section)
+            for option in options:
+                config.set(section, option, "False")
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        directory = Path(tempfile.mkdtemp(prefix=f"DDF-inputs_L{self.obsid}.", dir=os.path.abspath(self.outdir)))
+        generated = directory / "ddf-input.cfg"
+        with generated.open("w") as stream:
+            config.write(stream)
+        generated.with_suffix(".mode.json").write_text(json.dumps({"mode": mode, "reason": reason,
+            "template": str(original), "config_sha256": self._file_digest(generated),
+            "model_compatibility": information if mode == "lite" else None}, indent=2) + "\n")
+        self.ddfconfig = str(generated)
+        logger.info(f"Selected DDF {mode} mode: {reason}; config: {generated}")
+
     def setup_rundir(self, workdir):
         # TODO: fix tempdir structure to avoid nested tmpdir on Slurm submission.
         self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
+    @staticmethod
+    def prepare_results(workdir, ddfconfig):
+        """Retain the DR3 cluster catalogue and portable solutions for PILOT."""
+        marker = Path(ddfconfig).with_suffix(".mode.json")
+        if not marker.is_file() or json.loads(marker.read_text())["mode"] != "lite":
+            return
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ddfconfig)
+        root = Path(workdir).resolve()
+        cluster = Path(config.get("image", "clusterfile"))
+        saved_cluster = root / "image_dirin_SSD_m.npy.ClusterCat.npy"
+        if cluster.resolve() != saved_cluster.resolve():
+            shutil.copy2(cluster, saved_cluster)
+        for link in (root / "SOLSDIR").rglob("*.npz"):
+            if link.is_symlink():
+                target = Path(os.readlink(link))
+                if target.is_absolute() and target.is_relative_to(root):
+                    if not link.is_file():
+                        raise FileNotFoundError(f"Missing DDF solution: {link} -> {target}")
+                    link.unlink()
+                    link.symlink_to(os.path.relpath(target, link.parent))
+
     def move_results_from_rundir(self):
         source = self.rundir if self.restarting else pathlib.Path(self.rundir).parent.absolute().as_posix()
+        self.prepare_results(source, self.ddfconfig)
         outpath = self.get_results_path()
         logger.info(f"Copying results from {source} to: {outpath}")
         shutil.move(source, outpath)
@@ -80,6 +385,11 @@ class DDFConfig:
             directives.append(f"#SBATCH --mem {slurm_params['memory']}GB")
         directives.append(f"#SBATCH --job-name DDF-pipeline_L{self.obsid}")
 
+        prepare = shlex.join([
+            sys.executable, "-c",
+            "from flocs_runners.ddf_runner import DDFConfig; import sys; DDFConfig.prepare_results(*sys.argv[1:])",
+            self.rundir, self.ddfconfig,
+        ])
         script = "\n".join(
             [
                 "#!/bin/bash",
@@ -88,6 +398,7 @@ class DDFConfig:
                 f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
                 "status=$?",
                 "if [ \"$status\" -eq 0 ]; then",
+                f"    {prepare} || exit $?",
                 "    cd / || exit $?",
                 f"    mv -- {shlex.quote(self.rundir)} {shlex.quote(outpath)} || exit $?",
                 "fi",
@@ -119,6 +430,7 @@ class DDFConfig:
         except subprocess.CalledProcessError as error:
             with open(log_path, "wb") as log_file:
                 log_file.write(error.output or b"")
+            raise
 
     def run_workflow(
         self,
@@ -135,6 +447,9 @@ class DDFConfig:
             if not os.path.isdir(self.rundir):
                 raise NotADirectoryError(f"DDF restart directory does not exist: {self.rundir}")
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
+            prepared = Path(self.rundir) / "ddf-input.cfg"
+            if prepared.is_file() and prepared.with_suffix(".mode.json").is_file():
+                self.ddfconfig = str(prepared)
         elif use_node_scratch:
             self.rundir = workdir
             self.restarting = False
@@ -148,6 +463,8 @@ class DDFConfig:
         if restart:
             self.run_restart(ddf_container, scheduler, slurm_params)
             return
+
+        self.prepare_dr3_config(ddf_container)
 
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
@@ -180,6 +497,11 @@ class DDFConfig:
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
             print(out)
         elif scheduler == "singleMachine":
+            # Preserve the submitted mode/config with the actual pipeline working files.
+            for source in (Path(self.ddfconfig), Path(self.ddfconfig).with_suffix(".mode.json")):
+                target = Path.cwd() / source.name
+                if source.is_file() and source.resolve() != target.resolve():
+                    shutil.copy2(source, target)
             cmd = f"apptainer exec {ddf_container} make_mslists.py force"
             logger.info(f"Running command:\n{cmd}")
             out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
@@ -200,6 +522,7 @@ class DDFConfig:
                 if e.stderr:
                     with open("log_DDF-pipeline_err.txt", "wb") as f:
                         f.write(e.stderr)
+                raise
 
     def verify_ddf_container(self) -> str:
         ddf_container = os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif")
