@@ -314,7 +314,7 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
         if not config.has_section("data"):
             config.add_section("data")
         config.set("data", "colname", "DATA")
-        for section, options in {"control": ("polcubes", "stokesv"), "spectra": ("do_dynspec",)}.items():
+        for section, options in {"control": ("bootstrap", "polcubes", "stokesv"), "spectra": ("do_dynspec",)}.items():
             if not config.has_section(section):
                 config.add_section(section)
             for option in options:
