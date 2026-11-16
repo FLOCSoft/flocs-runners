@@ -63,7 +63,7 @@ class DDFConfig:
         return os.path.abspath(os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}"))
 
     def submit_restart(self, ddf_container: str, slurm_params: dict):
-        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        command = ["apptainer", "exec", "--env", "PYTHONNOUSERSITE=1", ddf_container, "pipeline.py", self.ddfconfig]
         log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
         outpath = self.get_results_path()
 
@@ -102,7 +102,7 @@ class DDFConfig:
         print(out)
 
     def run_restart(self, ddf_container: str, scheduler: str, slurm_params: dict):
-        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        command = ["apptainer", "exec", "--env", "PYTHONNOUSERSITE=1", ddf_container, "pipeline.py", self.ddfconfig]
         if scheduler in {"slurm", "slurm-srun"}:
             self.submit_restart(ddf_container, slurm_params)
             return
@@ -180,14 +180,14 @@ class DDFConfig:
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
             print(out)
         elif scheduler == "singleMachine":
-            cmd = f"apptainer exec {ddf_container} make_mslists.py force"
+            cmd = f"apptainer exec --env PYTHONNOUSERSITE=1 {ddf_container} make_mslists.py force"
             logger.info(f"Running command:\n{cmd}")
             out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
             with open("big-mslist.txt", "w") as mslist:
                 for ms in sorted(Path(os.getcwd()).glob("*pre-cal.ms")):
                     mslist.write(f"{ms.name}\n")
 
-            cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
+            cmd = f"apptainer exec --env PYTHONNOUSERSITE=1 {ddf_container} pipeline.py {self.ddfconfig}"
             logger.info(f"Running command:\n{cmd}")
             try:
                 out = subprocess.check_output(cmd.split(" "))
