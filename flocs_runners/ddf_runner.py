@@ -73,7 +73,10 @@ class DDFConfig:
         return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
 
     def _fetch_dr3_archive(self, entry, cache):
-        """Verify a cached archive, or publish a complete, checksum-verified download."""
+        """Check the size and checksum of any local LoTSS-DR3 archive.
+
+        If missing or invalid, download it from the SURF SDR and verify the new copy.
+        """
         archive = cache / entry["key"]
         algorithm, expected = entry["checksum"].split(":", 1)
         if archive.is_file():
