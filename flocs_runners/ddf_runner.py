@@ -124,7 +124,7 @@ class DDFConfig:
 
         Existing tape archives are recalled and waited for. An absent field, failed
         download or incomplete product set leaves full mode selected.
-        Successfully downloaded products remain cached for subsequent attempts.
+        Verified archives are reused; the required products are extracted each time.
         """
         names = set()
         for ms in self.msfiles:
@@ -154,61 +154,51 @@ class DDFConfig:
         stem = "image_full_ampphase_di_m.NS"
         required = [stem + ".DicoModel", stem + ".mask01.fits", stem + ".app.restored.fits",
                     "image_dirin_SSD_m.npy.ClusterCat.npy"]
-        manifest = cache / "dr3-model.json"
         entries = record.get("files", {}).get("entries", {})
         missing = {"images.tar", "uv_misc.tar"} - entries.keys()
         if missing:
             raise ValueError(f"Missing DR3 archives for {field}: {sorted(missing)}; full DDF is required")
-        published = {key: value["checksum"] for key, value in entries.items()
-                     if key in ("images.tar", "uv_misc.tar", "misc.tar")}
-        ready = False
-        if manifest.exists():
-            saved = json.loads(manifest.read_text())
-            ready = saved.get("field") == field and saved.get("archives") == published
-            if ready:
-                ready = all((cache / name).is_file()
-                            and self._file_digest(cache / name) == saved.get("files", {}).get(name)
-                            for name in required)
-        if not ready:
-            # Start both recalls before waiting on either large archive.
-            for name in ("images.tar", "uv_misc.tar"):
-                try:
-                    request = Request(entries[name]["links"]["content"], headers={"Range": "bytes=0-0"})
-                    with urlopen(request, timeout=60):
-                        pass
-                except (OSError, URLError, HTTPException) as error:
-                    logger.warning(f"DR3 recall request for {name} failed; will retry at download: {error}")
-            extracted = set()
-            for name in ("images.tar", "uv_misc.tar", "misc.tar"):
-                if name not in entries:
-                    continue
-                logger.info(f"Fetching DR3 {name} for exact field {field}")
-                try:
-                    archive = self._fetch_dr3_archive(entries[name], cache)
-                    with tarfile.open(archive, "r:") as bundle:
-                        members = {}
-                        for member in bundle:
-                            basename = Path(member.name).name
-                            if basename in required:
-                                if basename in members or not member.isfile():
-                                    raise ValueError(f"Ambiguous or non-regular DR3 model member: {member.name}")
-                                members[basename] = member
-                        for basename, member in members.items():
-                            with bundle.extractfile(member) as source:
-                                with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
-                                    staged = Path(target.name)
-                                    shutil.copyfileobj(source, target)
-                            if staged.stat().st_size != member.size:
-                                staged.unlink()
-                                raise ValueError(f"Incomplete extracted model file: {basename}")
-                            os.replace(staged, cache / basename)
-                            extracted.add(basename)
-                except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
-                    logger.warning(f"DR3 {name} unavailable for {field}: {error}")
-                if set(required) <= extracted:
-                    break
-            if not set(required) <= extracted:
-                raise ValueError(f"Incomplete DR3 products for {field}: missing {sorted(set(required) - extracted)}")
+        # Start both recalls before waiting on either missing archive.
+        for name in ("images.tar", "uv_misc.tar"):
+            if (cache / name).is_file():
+                continue
+            try:
+                request = Request(entries[name]["links"]["content"], headers={"Range": "bytes=0-0"})
+                with urlopen(request, timeout=60):
+                    pass
+            except (OSError, URLError, HTTPException) as error:
+                logger.warning(f"DR3 recall request for {name} failed; will retry at download: {error}")
+        extracted = set()
+        for name in ("images.tar", "uv_misc.tar", "misc.tar"):
+            if name not in entries:
+                continue
+            logger.info(f"Fetching DR3 {name} for exact field {field}")
+            try:
+                archive = self._fetch_dr3_archive(entries[name], cache)
+                with tarfile.open(archive, "r:") as bundle:
+                    members = {}
+                    for member in bundle:
+                        basename = Path(member.name).name
+                        if basename in required:
+                            if basename in members or not member.isfile():
+                                raise ValueError(f"Ambiguous or non-regular DR3 model member: {member.name}")
+                            members[basename] = member
+                    for basename, member in members.items():
+                        with bundle.extractfile(member) as source:
+                            with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
+                                staged = Path(target.name)
+                                shutil.copyfileobj(source, target)
+                        if staged.stat().st_size != member.size:
+                            staged.unlink()
+                            raise ValueError(f"Incomplete extracted model file: {basename}")
+                        os.replace(staged, cache / basename)
+                        extracted.add(basename)
+            except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
+                logger.warning(f"DR3 {name} unavailable for {field}: {error}")
+            if set(required) <= extracted:
+                break
+        if not set(required) <= extracted:
+            raise ValueError(f"Incomplete DR3 products for {field}: missing {sorted(set(required) - extracted)}")
 
         with fits.open(cache / required[2], memmap=True) as image, fits.open(cache / required[1], memmap=True) as mask:
             header = image[0].header
@@ -226,13 +216,6 @@ class DDFConfig:
             raise ValueError("Invalid DR3 cluster catalogue")
         if not np.isfinite(clusters["ra"]).all() or not np.isfinite(clusters["dec"]).all():
             raise ValueError("Non-finite DR3 calibration directions")
-        if not ready:
-            contents = {"field": field, "record": record["links"]["self_html"],
-                        "archives": published, "files": {name: self._file_digest(cache / name) for name in required}}
-            with tempfile.NamedTemporaryFile(mode="w", dir=cache, delete=False) as stream:
-                json.dump(contents, stream, indent=2)
-                staged = Path(stream.name)
-            os.replace(staged, manifest)
         return {"field": field, "cache": cache, "model": cache / required[0],
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
