@@ -663,6 +663,8 @@ def delay_calibration(
             )
             sys.exit(-1)
         delay_cat = Table.read(args["delay_calibrator"]["path"])
+        if not delay_cat:
+            raise RuntimeError("delay_calibrators.csv is empty. Cannot continue")
         model_images = []
         for delay in delay_cat:
             delay_ra = delay["RA"]
