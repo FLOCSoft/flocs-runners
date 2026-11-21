@@ -62,7 +62,7 @@ class DDFConfig:
             self.obsid = "unknown"
 
     @staticmethod
-    def _file_digest(path, algorithm="sha256"):
+    def _file_digest(path, algorithm):
         digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
         with open(path, "rb") as stream:
             for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
@@ -243,14 +243,8 @@ class DDFConfig:
         return compatible, information
 
     def prepare_dr3_config(self, container):
-        """Choose lite/full once, retaining a derived config and the selection reason."""
+        """Choose lite/full and write the configuration submitted to DDF."""
         original = Path(self.ddfconfig)
-        marker = original.with_suffix(".mode.json")
-        if marker.is_file():
-            decision = json.loads(marker.read_text())
-            if decision.get("config_sha256") == self._file_digest(original):
-                logger.info(f"Reusing prepared DDF {decision['mode']} configuration: {original}")
-                return
         config = configparser.ConfigParser(interpolation=None)
         config.optionxform = str
         with original.open() as stream:
@@ -294,9 +288,6 @@ class DDFConfig:
         generated = directory / "ddf-input.cfg"
         with generated.open("w") as stream:
             config.write(stream)
-        generated.with_suffix(".mode.json").write_text(json.dumps({"mode": mode, "reason": reason,
-            "template": str(original), "config_sha256": self._file_digest(generated),
-            "model_compatibility": information if mode == "lite" else None}, indent=2) + "\n")
         self.ddfconfig = str(generated)
         logger.info(f"Selected DDF {mode} mode: {reason}; config: {generated}")
 
@@ -307,19 +298,17 @@ class DDFConfig:
     def prepare_run_inputs(self, workdir):
         """Save the selected configuration and cluster catalogue with the run."""
         original = Path(self.ddfconfig)
-        marker = original.with_suffix(".mode.json")
-        if not marker.is_file():
-            return
-        decision = json.loads(marker.read_text())
         config = configparser.ConfigParser(interpolation=None)
         config.optionxform = str
         with original.open() as stream:
             config.read_file(stream)
         root = Path(workdir).resolve()
-        if decision["mode"] == "lite":
-            cluster = Path(config.get("image", "clusterfile"))
+        model = config.get("inputmodel", "basedicomodel", fallback="").strip()
+        clusterfile = config.get("image", "clusterfile", fallback="").strip()
+        if model.lower() not in ("", "none") and clusterfile.lower() not in ("", "none"):
+            cluster = Path(clusterfile)
             if not cluster.is_absolute():
-                cluster = original.parent / cluster
+                cluster = root / cluster
             saved_cluster = root / "image_dirin_SSD_m.npy.ClusterCat.npy"
             if cluster.resolve() != saved_cluster.resolve():
                 shutil.copy2(cluster, saved_cluster)
@@ -327,8 +316,6 @@ class DDFConfig:
         generated = root / "ddf-input.cfg"
         with generated.open("w") as stream:
             config.write(stream)
-        decision["config_sha256"] = self._file_digest(generated)
-        generated.with_suffix(".mode.json").write_text(json.dumps(decision, indent=2) + "\n")
         self.ddfconfig = str(generated)
 
     @staticmethod
@@ -411,6 +398,7 @@ class DDFConfig:
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
+        config_prepared: bool = False,
     ):
         if restart:
             self.rundir = os.path.abspath(workdir)
@@ -419,7 +407,7 @@ class DDFConfig:
                 raise NotADirectoryError(f"DDF restart directory does not exist: {self.rundir}")
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
             prepared = Path(self.rundir) / "ddf-input.cfg"
-            if prepared.is_file() and prepared.with_suffix(".mode.json").is_file():
+            if prepared.is_file():
                 self.ddfconfig = str(prepared)
         elif use_node_scratch:
             self.rundir = workdir
@@ -435,7 +423,8 @@ class DDFConfig:
             self.run_restart(ddf_container, scheduler, slurm_params)
             return
 
-        self.prepare_dr3_config(ddf_container)
+        if not config_prepared:
+            self.prepare_dr3_config(ddf_container)
 
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
@@ -577,6 +566,10 @@ def ddf_pipeline(
             help="[slurm] this will run the pipeline on the node's local $TMPDIR instead of a user-defined rundir."
         ),
     ] = False,
+    config_prepared: Annotated[
+        bool,
+        Parameter(help="Use the supplied parset without selecting DR3 inputs again."),
+    ] = False,
 ):
     logger.info("Starting ddf-pipeline")
     args = locals()
@@ -597,6 +590,7 @@ def ddf_pipeline(
         "restart",
         "outdir",
         "use_node_scratch",
+        "config_prepared",
     ]
     args_for_linc = args.copy()
     for key in unneeded_keys:
@@ -616,4 +610,5 @@ def ddf_pipeline(
         outdir=args["outdir"],
         restart=args["restart"],
         use_node_scratch=args["use_node_scratch"],
+        config_prepared=args["config_prepared"],
     )

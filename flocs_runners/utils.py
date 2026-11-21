@@ -281,6 +281,7 @@ def add_slurm_skeleton_ddf(
     cluster: str = "",
     local_scratch: bool = False,
 ):
+    """Wrap a prepared DDF configuration in a Slurm job."""
     sbatch_line = "#SBATCH "
     if time:
         sbatch_line += f"-t {time} "
@@ -302,7 +303,7 @@ cd $WORKDIR
 for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
     apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
+flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} --config-prepared .
 """
     else:
         wrapped = f"""#!/bin/bash
@@ -312,7 +313,7 @@ cd $WORKDIR
 for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
     apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
+flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} --config-prepared .
 """
     return wrapped
 
