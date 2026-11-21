@@ -184,15 +184,19 @@ class DDFConfig:
                                 raise ValueError(f"Ambiguous or non-regular DR3 model member: {member.name}")
                             members[basename] = member
                     for basename, member in members.items():
-                        with bundle.extractfile(member) as source:
-                            with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
-                                staged = Path(target.name)
-                                shutil.copyfileobj(source, target)
-                        if staged.stat().st_size != member.size:
-                            staged.unlink()
-                            raise ValueError(f"Incomplete extracted model file: {basename}")
-                        os.replace(staged, cache / basename)
-                        extracted.add(basename)
+                        staged = None
+                        try:
+                            with bundle.extractfile(member) as source:
+                                with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
+                                    staged = Path(target.name)
+                                    shutil.copyfileobj(source, target)
+                            if staged.stat().st_size != member.size:
+                                raise ValueError(f"Incomplete extracted model file: {basename}")
+                            os.replace(staged, cache / basename)
+                            extracted.add(basename)
+                        finally:
+                            if staged is not None:
+                                staged.unlink(missing_ok=True)
             except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
                 logger.warning(f"DR3 {name} unavailable for {field}: {error}")
             if set(required) <= extracted:
