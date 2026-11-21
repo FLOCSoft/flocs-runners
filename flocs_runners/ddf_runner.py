@@ -239,33 +239,13 @@ class DDFConfig:
     def _compatible_dr3_model(self, model, container):
         """Validate the pickle in DDF's Python and add only missing legacy defaults."""
         compatible = model.with_name(model.stem + ".compatible.DicoModel")
-        code = """
-import json, pickle, sys
-with open(sys.argv[1], 'rb') as stream:
-    model = pickle.load(stream, encoding='latin-1')
-if not model.get('GD') or 'ModelShape' not in model or not len(model.get('Comp', {})):
-    raise ValueError('Invalid DicoModel')
-added = []
-for section, values in {
-    'Weight': {'EnableSigmoidTaper': 0, 'SigmoidTaperInnerCutoff': 0,
-               'SigmoidTaperOuterCutoff': 0, 'SigmoidTaperInnerRolloffStrength': 0.5,
-               'SigmoidTaperOuterRolloffStrength': 0.5},
-    'Data': {'Dask': False},
-}.items():
-    for key, value in values.items():
-        if key not in model['GD'].setdefault(section, {}):
-            model['GD'][section][key] = value
-            added.append(section + '.' + key)
-with open(sys.argv[2], 'wb') as stream:
-    pickle.dump(model, stream)
-print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
-      'npix': int(model['GD']['Image']['NPix']), 'cell': float(model['GD']['Image']['Cell'])}))
-"""
+        helper = Path(__file__).with_name("ddf_model.py").resolve()
         with tempfile.NamedTemporaryFile(dir=model.parent, delete=False) as stream:
             staged = Path(stream.name)
         try:
             result = subprocess.run(["apptainer", "exec", "--bind", f"{model.parent}:{model.parent}",
-                                     container, "python3", "-c", code, str(model), str(staged)],
+                                     "--bind", f"{helper}:{helper}:ro", container, "python3", str(helper),
+                                     str(model), str(staged)],
                                     check=True, capture_output=True, text=True)
             logger.info(result.stdout.strip())
             information = json.loads(next(line[len("DR3_MODEL_INFO "):]
@@ -337,19 +317,37 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
         # TODO: fix tempdir structure to avoid nested tmpdir on Slurm submission.
         self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
-    @staticmethod
-    def prepare_results(workdir, ddfconfig):
-        """Retain the DR3 cluster catalogue and portable solutions for PILOT."""
-        marker = Path(ddfconfig).with_suffix(".mode.json")
-        if not marker.is_file() or json.loads(marker.read_text())["mode"] != "lite":
+    def prepare_run_inputs(self, workdir):
+        """Save the selected configuration and cluster catalogue with the run."""
+        original = Path(self.ddfconfig)
+        marker = original.with_suffix(".mode.json")
+        if not marker.is_file():
             return
+        decision = json.loads(marker.read_text())
         config = configparser.ConfigParser(interpolation=None)
-        config.read(ddfconfig)
+        config.optionxform = str
+        with original.open() as stream:
+            config.read_file(stream)
         root = Path(workdir).resolve()
-        cluster = Path(config.get("image", "clusterfile"))
-        saved_cluster = root / "image_dirin_SSD_m.npy.ClusterCat.npy"
-        if cluster.resolve() != saved_cluster.resolve():
-            shutil.copy2(cluster, saved_cluster)
+        if decision["mode"] == "lite":
+            cluster = Path(config.get("image", "clusterfile"))
+            if not cluster.is_absolute():
+                cluster = original.parent / cluster
+            saved_cluster = root / "image_dirin_SSD_m.npy.ClusterCat.npy"
+            if cluster.resolve() != saved_cluster.resolve():
+                shutil.copy2(cluster, saved_cluster)
+            config.set("image", "clusterfile", saved_cluster.name)
+        generated = root / "ddf-input.cfg"
+        with generated.open("w") as stream:
+            config.write(stream)
+        decision["config_sha256"] = self._file_digest(generated)
+        generated.with_suffix(".mode.json").write_text(json.dumps(decision, indent=2) + "\n")
+        self.ddfconfig = str(generated)
+
+    @staticmethod
+    def prepare_solution_links(workdir):
+        """Make internal solution links relative before moving the run directory."""
+        root = Path(workdir).resolve()
         for link in (root / "SOLSDIR").rglob("*.npz"):
             if link.is_symlink():
                 target = Path(os.readlink(link))
@@ -361,7 +359,7 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
 
     def move_results_from_rundir(self):
         source = self.rundir if self.restarting else pathlib.Path(self.rundir).parent.absolute().as_posix()
-        self.prepare_results(source, self.ddfconfig)
+        self.prepare_solution_links(source)
         outpath = self.get_results_path()
         logger.info(f"Copying results from {source} to: {outpath}")
         shutil.move(source, outpath)
@@ -370,10 +368,11 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         return os.path.abspath(os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}"))
 
-    def submit_restart(self, ddf_container: str, slurm_params: dict):
-        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
-        log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
-        outpath = self.get_results_path()
+    def submit_restart(self, slurm_params: dict):
+        command = ["flocs-run", "ddf-pipeline", os.path.abspath(self.mspath),
+                   "--config-file", os.path.abspath(self.ddfconfig), "--scheduler", "singleMachine",
+                   "--rundir", os.path.abspath(self.rundir), "--outdir", os.path.abspath(self.outdir),
+                   "--restart"]
 
         directives = []
         if slurm_params.get("time"):
@@ -388,24 +387,12 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
             directives.append(f"#SBATCH --mem {slurm_params['memory']}GB")
         directives.append(f"#SBATCH --job-name DDF-pipeline_L{self.obsid}")
 
-        prepare = shlex.join([
-            sys.executable, "-c",
-            "from flocs_runners.ddf_runner import DDFConfig; import sys; DDFConfig.prepare_results(*sys.argv[1:])",
-            self.rundir, self.ddfconfig,
-        ])
         script = "\n".join(
             [
                 "#!/bin/bash",
                 *directives,
                 f"cd {shlex.quote(self.rundir)} || exit $?",
-                f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
-                "status=$?",
-                "if [ \"$status\" -eq 0 ]; then",
-                f"    {prepare} || exit $?",
-                "    cd / || exit $?",
-                f"    mv -- {shlex.quote(self.rundir)} {shlex.quote(outpath)} || exit $?",
-                "fi",
-                "exit \"$status\"",
+                f"exec {shlex.join(command)}",
                 "",
             ]
         )
@@ -418,22 +405,16 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
     def run_restart(self, ddf_container: str, scheduler: str, slurm_params: dict):
         command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
         if scheduler in {"slurm", "slurm-srun"}:
-            self.submit_restart(ddf_container, slurm_params)
+            self.submit_restart(slurm_params)
             return
         if scheduler != "singleMachine":
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
         log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
         logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(command)}")
-        try:
-            out = subprocess.check_output(command, cwd=self.rundir, stderr=subprocess.STDOUT)
-            with open(log_path, "wb") as log_file:
-                log_file.write(out)
-            self.move_results_from_rundir()
-        except subprocess.CalledProcessError as error:
-            with open(log_path, "wb") as log_file:
-                log_file.write(error.output or b"")
-            raise
+        with open(log_path, "wb") as log_file:
+            subprocess.run(command, cwd=self.rundir, stdout=log_file, stderr=subprocess.STDOUT, check=True)
+        self.move_results_from_rundir()
 
     def run_workflow(
         self,
@@ -500,22 +481,18 @@ print('DR3_MODEL_INFO ' + json.dumps({'added_defaults': added,
             out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
             print(out)
         elif scheduler == "singleMachine":
-            # Preserve the submitted mode/config with the actual pipeline working files.
-            for source in (Path(self.ddfconfig), Path(self.ddfconfig).with_suffix(".mode.json")):
-                target = Path.cwd() / source.name
-                if source.is_file() and source.resolve() != target.resolve():
-                    shutil.copy2(source, target)
-            cmd = f"apptainer exec {ddf_container} make_mslists.py force"
-            logger.info(f"Running command:\n{cmd}")
-            out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
+            self.prepare_run_inputs(Path.cwd())
+            cmd = ["apptainer", "exec", ddf_container, "make_mslists.py", "force"]
+            logger.info(f"Running command:\n{shlex.join(cmd)}")
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
             with open("big-mslist.txt", "w") as mslist:
                 for ms in sorted(Path(os.getcwd()).glob("*pre-cal.ms")):
                     mslist.write(f"{ms.name}\n")
 
-            cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
-            logger.info(f"Running command:\n{cmd}")
+            cmd = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+            logger.info(f"Running command:\n{shlex.join(cmd)}")
             try:
-                out = subprocess.check_output(cmd.split(" "))
+                out = subprocess.check_output(cmd)
                 with open("log_DDF-pipeline.txt", "wb") as f:
                     f.write(out)
                 self.move_results_from_rundir()
