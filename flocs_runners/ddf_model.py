@@ -3,7 +3,7 @@ import pickle
 import sys
 
 
-def prepare_dr3_model(model_path, output_path):
+def ensure_compatible_dr3_model(model_path, output_path):
     """Validate a DR3 model and add missing defaults expected by DDF."""
     with open(model_path, "rb") as stream:
         model = pickle.load(stream, encoding="latin-1")
@@ -27,4 +27,4 @@ def prepare_dr3_model(model_path, output_path):
 
 
 if __name__ == "__main__":
-    print("DR3_MODEL_INFO " + json.dumps(prepare_dr3_model(*sys.argv[1:])))
+    print("DR3_MODEL_INFO " + json.dumps(ensure_compatible_dr3_model(*sys.argv[1:])))
