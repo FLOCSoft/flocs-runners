@@ -355,6 +355,7 @@ class VLBIJSONConfig:
                 if e.stderr:
                     with open(f"log_VLBI_{self.mode.value}_err.txt", "wb") as f:
                         f.write(e.stderr)
+                raise
 
     def setup_apptainer_variables(self, workdir):
         try:
@@ -384,7 +385,7 @@ class VLBIJSONConfig:
                 os.environ["APPTAINER_BINDPATH"] = (
                     f"{os.environ['LINC_DATA_ROOT']}:/opt/lofar/LINC"
                     + f",{os.environ['LINC_DATA_ROOT']}:/opt/lofar/VLBI-cwl"  # VLBI-cwl is earlier in PATH, this is intentional.
-                    + f",{workdir}"
+                    + f",{os.path.dirname(workdir)}"
                     + f",{os.environ['APPTAINER_BINDPATH']}"
                 )
         elif "singularity" in out:
