@@ -4,7 +4,7 @@ import sys
 
 
 def ensure_compatible_dr3_model(model_path, output_path):
-    """Validate a DR3 model and add missing defaults expected by DDF."""
+    """Validate a DR3 DicoModel file and add missing defaults expected by DDF."""
     with open(model_path, "rb") as stream:
         model = pickle.load(stream, encoding="latin-1")
     if not model.get("GD") or "ModelShape" not in model or not len(model.get("Comp", {})):

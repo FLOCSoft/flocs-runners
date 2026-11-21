@@ -219,8 +219,8 @@ class DDFConfig:
         return {"field": field, "cache": cache, "model": cache / required[0],
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
-    def _compatible_dr3_model(self, model, container):
-        """Validate the pickle in DDF's Python and add only missing legacy defaults."""
+    def _run_dr3_model_check(self, model, container):
+        """Run DR3 model validation and preparation inside the DDF container."""
         compatible = model.with_name(model.stem + ".compatible.DicoModel")
         helper = Path(__file__).with_name("ddf_model.py").resolve()
         with tempfile.NamedTemporaryFile(dir=model.parent, delete=False) as stream:
@@ -258,7 +258,7 @@ class DDFConfig:
         try:
             products = self.fetch_dr3_model()
             if products:
-                compatible, information = self._compatible_dr3_model(products["model"], container)
+                compatible, information = self._run_dr3_model_check(products["model"], container)
                 if (config.getint("image", "imsize", fallback=20000) != information["npix"]
                         or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
                     raise ValueError("Requested image size/pixel scale differs from the DR3 model")
