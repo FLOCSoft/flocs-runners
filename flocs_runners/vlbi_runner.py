@@ -1061,6 +1061,10 @@ def dd_calibration(
             help="Toggles whether to still image sources that are too close to each other for reliable calibration. Useful for e.g. LoTSS-HR or when calibrator level sources are too close to each other to be kept for dd calibration."
         ),
     ] = False,
+    skip_unreliable_sources: Annotated[
+        bool,
+        Parameter(help="Skip imaging and self-calibration of initially unreliable and demoted unreliable sources."),
+    ] = False,
     custom_phasediff_score_csv: Annotated[
         Optional[dict],
         Parameter(
