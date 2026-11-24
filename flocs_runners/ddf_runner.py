@@ -342,11 +342,10 @@ class DDFConfig:
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
         return os.path.abspath(os.path.join(self.outdir, f"DDF-pipeline_L{self.obsid}_{date}"))
 
-    def submit_restart(self, slurm_params: dict):
-        command = ["flocs-run", "ddf-pipeline", os.path.abspath(self.mspath),
-                   "--config-file", os.path.abspath(self.ddfconfig), "--scheduler", "singleMachine",
-                   "--rundir", os.path.abspath(self.rundir), "--outdir", os.path.abspath(self.outdir),
-                   "--restart"]
+    def submit_restart(self, ddf_container: str, slurm_params: dict):
+        command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
+        outpath = self.get_results_path()
 
         directives = []
         if slurm_params.get("time"):
@@ -366,7 +365,13 @@ class DDFConfig:
                 "#!/bin/bash",
                 *directives,
                 f"cd {shlex.quote(self.rundir)} || exit $?",
-                f"exec {shlex.join(command)}",
+                f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
+                "status=$?",
+                "if [ \"$status\" -eq 0 ]; then",
+                "    cd / || exit $?",
+                f"    mv -- {shlex.quote(self.rundir)} {shlex.quote(outpath)} || exit $?",
+                "fi",
+                "exit \"$status\"",
                 "",
             ]
         )
@@ -379,7 +384,7 @@ class DDFConfig:
     def run_restart(self, ddf_container: str, scheduler: str, slurm_params: dict):
         command = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
         if scheduler in {"slurm", "slurm-srun"}:
-            self.submit_restart(slurm_params)
+            self.submit_restart(ddf_container, slurm_params)
             return
         if scheduler != "singleMachine":
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
