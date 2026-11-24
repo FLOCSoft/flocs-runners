@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -268,54 +269,93 @@ EOT
 
 
 def add_slurm_skeleton_ddf(
+    ddf_container: str,
     data_dir: str,
-    configfile: str,
-    workdir: str = os.getcwd(),
-    outdir: str = "",
+    workdir: str,
+    outdir: str,
+    obsid: str,
     time: str = "",
     cores: int = 0,
-    job_name: str = "",
     queue: str = "",
     account: str = "",
     memory: int = 0,
-    cluster: str = "",
     local_scratch: bool = False,
 ):
-    """Wrap a prepared DDF configuration in a Slurm job."""
-    sbatch_line = "#SBATCH "
+    """Stage the input MSes and run DDF with the prepared parset."""
+    directives = [f"#SBATCH --job-name DDF-pipeline_L{obsid}"]
     if time:
-        sbatch_line += f"-t {time} "
+        directives.append(f"#SBATCH -t {time}")
     if cores:
-        sbatch_line += f"-c {cores} "
-    if job_name:
-        sbatch_line += f"--job-name {job_name} "
+        directives.append(f"#SBATCH -c {cores}")
     if queue:
-        sbatch_line += f"-p {queue} "
+        directives.append(f"#SBATCH -p {queue}")
     if account:
-        sbatch_line += f"-A {account} "
+        directives.append(f"#SBATCH -A {account}")
     if memory:
-        sbatch_line += f"--mem {memory}GB "
+        directives.append(f"#SBATCH --mem {memory}GB")
+
+    setup = ['cd -- "$SUBMIT_DIR"']
     if local_scratch:
-        wrapped = f"""#!/bin/bash
-{sbatch_line}
-export WORKDIR=$(mktemp -d -p $TMPDIR)
-cd $WORKDIR
-for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
-    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
+        setup = [
+            'SCRATCH_DIR=$(mktemp -d "${TMPDIR:?Slurm did not set TMPDIR}/ddf.XXXXXXXX")',
+            'cd -- "$SCRATCH_DIR"',
+            'cp -- "$SUBMIT_DIR/ddf-input.cfg" .',
+            'catalogue="$SUBMIT_DIR/image_dirin_SSD_m.npy.ClusterCat.npy"',
+            'if [[ -f $catalogue ]]; then cp -- "$catalogue" .; fi',
+        ]
+    return "\n".join([
+        "#!/bin/bash",
+        *directives,
+        "set -eo pipefail",
+        "shopt -s nullglob globstar",
+        f"SUBMIT_DIR={shlex.quote(workdir)}",
+        f"DATA_DIR={shlex.quote(data_dir)}",
+        f"OUTDIR={shlex.quote(outdir)}",
+        f"CONTAINER={shlex.quote(ddf_container)}",
+        f"RESULT_PREFIX={shlex.quote(f'DDF-pipeline_L{obsid}')}",
+        *setup,
+        r'''WORKDIR=$(pwd -P)
+printf 'DDF working directory: %s\n' "$WORKDIR"
+inputs=("$DATA_DIR"/L*pre-cal.ms)
+if (( ${#inputs[@]} == 0 )); then
+    printf 'No input MeasurementSets in %s\n' "$DATA_DIR" >&2
+    exit 1
+fi
+ddf=(apptainer exec --bind "$WORKDIR" --bind "$OUTDIR")
+for ms in "${inputs[@]}"; do
+    "${ddf[@]}" --bind "$DATA_DIR" "$CONTAINER" DP3 "msin=$ms" "msout=${ms##*/}" \
+        msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False 'steps=[]'
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} --config-prepared .
-"""
-    else:
-        wrapped = f"""#!/bin/bash
-{sbatch_line}
-export WORKDIR={workdir}
-cd $WORKDIR
-for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
-    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
+staged=(*pre-cal.ms)
+if (( ${#staged[@]} == 0 )); then
+    printf 'No MeasurementSets staged in %s\n' "$WORKDIR" >&2
+    exit 1
+fi
+"${ddf[@]}" "$CONTAINER" make_mslists.py force
+printf '%s\n' "${staged[@]}" | LC_ALL=C sort > big-mslist.txt
+"${ddf[@]}" "$CONTAINER" pipeline.py "$WORKDIR/ddf-input.cfg" > "$SUBMIT_DIR/log_DDF-pipeline.txt" 2>&1
+if [[ ! "$SUBMIT_DIR" -ef "$WORKDIR" ]]; then
+    cp -- "$SUBMIT_DIR/log_DDF-pipeline.txt" "$WORKDIR/"
+fi
+
+# Preserve solution links that point to files inside the moved directory.
+for link in SOLSDIR/**/*.npz; do
+    [[ -L $link ]] || continue
+    target=$(readlink -- "$link")
+    [[ $target == "$WORKDIR/"* ]] || continue
+    if [[ ! -f $link ]]; then
+        printf 'Missing DDF solution: %s -> %s\n' "$link" "$target" >&2
+        exit 1
+    fi
+    relative=$(realpath --relative-to="${link%/*}" -- "$target")
+    ln -sfn -- "$relative" "$link"
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} --config-prepared .
-"""
-    return wrapped
+
+destination="$OUTDIR/${RESULT_PREFIX}_$(date -u +%Y_%m_%d-%H_%M_%S)"
+cd /
+mv -T -- "$WORKDIR" "$destination"
+''',
+    ])
 
 
 def add_apptainer_skeleton(contents: str, container: str, bindpaths: str = ""):

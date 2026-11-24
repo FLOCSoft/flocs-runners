@@ -1,6 +1,6 @@
+from .ddf_model import ensure_compatible_dr3_model
 from .utils import (
     add_slurm_skeleton_ddf,
-    detect_compute_cluster,
     extract_obsid_from_ms,
     get_container_env_var,
 )
@@ -10,7 +10,6 @@ import hashlib
 import json
 from http.client import HTTPException
 import os
-import pathlib
 import shlex
 import shutil
 import structlog
@@ -28,13 +27,20 @@ import numpy as np
 from casacore.tables import table
 from astropy.io import fits
 from cyclopts import Parameter
-from typing_extensions import Annotated, Optional
+from typing_extensions import Annotated, Optional, TypedDict
 
 logger = structlog.getLogger()
 
 
+class _DR3ArchiveEntry(TypedDict):
+    key: str
+    checksum: str
+    size: int
+    links: dict[str, str]
+
+
 class DDFConfig:
-    """"""
+    """Prepare and run a DDF-pipeline job."""
 
     def __init__(
         self,
@@ -42,10 +48,9 @@ class DDFConfig:
         ddfconfig: str,
         outdir: str = os.getcwd(),
     ):
-        self.outdir = outdir
-        self.cluster = detect_compute_cluster()
+        self.outdir = str(Path(outdir).resolve())
         self.mspath = mspath
-        self.ddfconfig = ddfconfig
+        self.ddfconfig = os.path.abspath(ddfconfig)
 
         filedir = os.path.join(os.path.abspath(mspath), "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
@@ -62,7 +67,7 @@ class DDFConfig:
             self.obsid = "unknown"
 
     @staticmethod
-    def _file_digest(path, algorithm):
+    def _file_digest(path: Path, algorithm: str) -> str:
         digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
         with open(path, "rb") as stream:
             for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
@@ -72,10 +77,11 @@ class DDFConfig:
                     digest.update(block)
         return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
 
-    def _fetch_dr3_archive(self, entry, cache):
-        """Check the size and checksum of any local LoTSS-DR3 archive.
+    def _fetch_dr3_archive(self, entry: _DR3ArchiveEntry, cache: Path) -> Path:
+        """Return a verified local copy of a LoTSS-DR3 archive.
 
-        If missing or invalid, download it from the SURF SDR and verify the new copy.
+        Reuse a cached file if its size and checksum match the repository metadata.
+        Otherwise, fetch it from SURF and apply the same checks before caching it.
         """
         archive = cache / entry["key"]
         algorithm, expected = entry["checksum"].split(":", 1)
@@ -218,31 +224,10 @@ class DDFConfig:
         clusters = np.load(cache / required[3], allow_pickle=False)
         if not len(clusters) or not clusters.dtype.names or not {"ra", "dec"} <= set(clusters.dtype.names):
             raise ValueError("Invalid DR3 cluster catalogue")
-        if not np.isfinite(clusters["ra"]).all() or not np.isfinite(clusters["dec"]).all():
-            raise ValueError("Non-finite DR3 calibration directions")
         return {"field": field, "cache": cache, "model": cache / required[0],
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
-    def _run_dr3_model_check(self, model, container):
-        """Run DR3 model validation and preparation inside the DDF container."""
-        compatible = model.with_name(model.stem + ".compatible.DicoModel")
-        helper = Path(__file__).with_name("ddf_model.py").resolve()
-        with tempfile.NamedTemporaryFile(dir=model.parent, delete=False) as stream:
-            staged = Path(stream.name)
-        try:
-            result = subprocess.run(["apptainer", "exec", "--bind", f"{model.parent}:{model.parent}",
-                                     "--bind", f"{helper}:{helper}:ro", container, "python3", str(helper),
-                                     str(model), str(staged)],
-                                    check=True, capture_output=True, text=True)
-            logger.info(result.stdout.strip())
-            information = json.loads(next(line[len("DR3_MODEL_INFO "):]
-                                         for line in result.stdout.splitlines() if line.startswith("DR3_MODEL_INFO ")))
-            os.replace(staged, compatible)
-        finally:
-            staged.unlink(missing_ok=True)
-        return compatible, information
-
-    def prepare_dr3_config(self, container):
+    def prepare_dr3_config(self):
         """Choose lite/full and write the configuration submitted to DDF."""
         original = Path(self.ddfconfig)
         config = configparser.ConfigParser(interpolation=None)
@@ -256,7 +241,14 @@ class DDFConfig:
         try:
             products = self.fetch_dr3_model()
             if products:
-                compatible, information = self._run_dr3_model_check(products["model"], container)
+                model = products["model"]
+                compatible = model.with_name(model.stem + ".compatible.DicoModel")
+                try:
+                    information = ensure_compatible_dr3_model(model, compatible)
+                except Exception as error:
+                    # Model decoding and serialization can raise library-specific errors.
+                    raise ValueError(f"Could not prepare DR3 model {model}: {error}") from error
+                logger.info("Prepared DR3 model", **information)
                 if (config.getint("image", "imsize", fallback=20000) != information["npix"]
                         or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
                     raise ValueError("Requested image size/pixel scale differs from the DR3 model")
@@ -271,9 +263,8 @@ class DDFConfig:
                     config.add_section("image")
                 config.set("image", "clusterfile", str(products["clusters"]))
                 mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
-        except (OSError, URLError, HTTPException, EOFError, ValueError, KeyError,
-                tarfile.TarError, subprocess.CalledProcessError) as error:
-            reason = error.stderr.strip()[-500:] if isinstance(error, subprocess.CalledProcessError) else str(error)
+        except (OSError, URLError, HTTPException, EOFError, ValueError, KeyError, tarfile.TarError) as error:
+            reason = str(error)
             logger.warning(f"DR3 model reuse unavailable; selecting full DDF run: {reason}")
         if not config.has_section("data"):
             config.add_section("data")
@@ -290,10 +281,6 @@ class DDFConfig:
             config.write(stream)
         self.ddfconfig = str(generated)
         logger.info(f"Selected DDF {mode} mode: {reason}; config: {generated}")
-
-    def setup_rundir(self, workdir):
-        # TODO: fix tempdir structure to avoid nested tmpdir on Slurm submission.
-        self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
 
     def prepare_run_inputs(self, workdir):
         """Save the selected configuration and cluster catalogue with the run."""
@@ -332,11 +319,10 @@ class DDFConfig:
                     link.symlink_to(os.path.relpath(target, link.parent))
 
     def move_results_from_rundir(self):
-        source = self.rundir if self.restarting else pathlib.Path(self.rundir).parent.absolute().as_posix()
-        self.prepare_solution_links(source)
+        self.prepare_solution_links(self.rundir)
         outpath = self.get_results_path()
-        logger.info(f"Copying results from {source} to: {outpath}")
-        shutil.move(source, outpath)
+        logger.info(f"Moving results from {self.rundir} to: {outpath}")
+        shutil.move(self.rundir, outpath)
 
     def get_results_path(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
@@ -399,27 +385,30 @@ class DDFConfig:
         self,
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        outdir: str = os.getcwd(),
+        outdir: Optional[str] = None,
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
-        config_prepared: bool = False,
     ):
+        batch = scheduler in {"slurm", "slurm-srun"}
+        if not batch and scheduler != "singleMachine":
+            raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
+
+        if outdir is not None:
+            self.outdir = str(Path(outdir).resolve())
+        workdir = str(Path(workdir).resolve())
+        if batch and not restart:
+            self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
+        else:
+            self.rundir = workdir
+
         if restart:
-            self.rundir = os.path.abspath(workdir)
-            self.restarting = True
             if not os.path.isdir(self.rundir):
                 raise NotADirectoryError(f"DDF restart directory does not exist: {self.rundir}")
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
             prepared = Path(self.rundir) / "ddf-input.cfg"
             if prepared.is_file():
                 self.ddfconfig = str(prepared)
-        elif use_node_scratch:
-            self.rundir = workdir
-            self.restarting = False
-        else:
-            self.setup_rundir(workdir)
-            self.restarting = False
         self.setup_apptainer_variables(self.rundir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
@@ -428,65 +417,45 @@ class DDFConfig:
             self.run_restart(ddf_container, scheduler, slurm_params)
             return
 
-        if not config_prepared:
-            self.prepare_dr3_config(ddf_container)
+        self.prepare_dr3_config()
+        self.prepare_run_inputs(self.rundir)
 
-        if scheduler == "slurm":
+        if batch:
+            Path(self.outdir).mkdir(parents=True, exist_ok=True)
             wrapped_cmd = add_slurm_skeleton_ddf(
+                ddf_container=ddf_container,
                 data_dir=os.path.abspath(self.mspath),
-                workdir=os.path.abspath(self.rundir),
-                outdir=os.path.abspath(outdir),
-                configfile=self.ddfconfig,
-                job_name=f"DDF-pipeline_L{self.obsid}",
-                cluster=self.cluster,
+                workdir=self.rundir,
+                outdir=self.outdir,
+                obsid=self.obsid,
+                local_scratch=use_node_scratch,
                 **slurm_params,
             )
-            with open("temp_jobscript.sh", "w") as f:
-                f.write(wrapped_cmd)
-            logger.info("Written temporary jobscript to temp_jobscript.sh")
-            out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+            script = Path(self.rundir) / "temp_jobscript.sh"
+            script.write_text(wrapped_cmd)
+            logger.info(f"Written temporary jobscript to {script}")
+            out = subprocess.check_output(["sbatch", str(script)]).decode("utf-8")
             print(out)
-        elif scheduler == "slurm-srun":
-            wrapped_cmd = add_slurm_skeleton_ddf(
-                data_dir=os.path.abspath(self.mspath),
-                workdir=os.path.abspath(self.rundir),
-                outdir=os.path.abspath(outdir),
-                configfile=self.ddfconfig,
-                job_name=f"DDF-pipeline_L{self.obsid}",
-                cluster=self.cluster,
-                **slurm_params,
-            )
-            with open("temp_jobscript.sh", "w") as f:
-                f.write(wrapped_cmd)
-            logger.info("Written temporary jobscript to temp_jobscript.sh")
-            out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
-            print(out)
-        elif scheduler == "singleMachine":
-            self.prepare_run_inputs(Path.cwd())
-            cmd = ["apptainer", "exec", ddf_container, "make_mslists.py", "force"]
-            logger.info(f"Running command:\n{shlex.join(cmd)}")
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-            with open("big-mslist.txt", "w") as mslist:
-                for ms in sorted(Path(os.getcwd()).glob("*pre-cal.ms")):
-                    mslist.write(f"{ms.name}\n")
+            return
 
-            cmd = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
-            logger.info(f"Running command:\n{shlex.join(cmd)}")
-            try:
-                out = subprocess.check_output(cmd)
-                with open("log_DDF-pipeline.txt", "wb") as f:
-                    f.write(out)
-                self.move_results_from_rundir()
-            except subprocess.CalledProcessError as e:
-                with open("log_DDF-pipeline.txt", "wb") as f:
-                    f.write(e.stdout)
-                if e.stderr:
-                    with open("log_DDF-pipeline_err.txt", "wb") as f:
-                        f.write(e.stderr)
-                raise
+        root = Path(self.rundir)
+        msfiles = sorted(root.glob("*pre-cal.ms"))
+        if not msfiles:
+            raise FileNotFoundError(f"No input MeasurementSets in {self.rundir}")
+        cmd = ["apptainer", "exec", ddf_container, "make_mslists.py", "force"]
+        logger.info(f"Running command:\n{shlex.join(cmd)}")
+        subprocess.run(cmd, cwd=self.rundir, check=True)
+        (root / "big-mslist.txt").write_text("".join(f"{ms.name}\n" for ms in msfiles))
+
+        cmd = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        logger.info(f"Running command:\n{shlex.join(cmd)}")
+        with (root / "log_DDF-pipeline.txt").open("wb") as log_file:
+            subprocess.run(cmd, cwd=self.rundir, stdout=log_file, stderr=subprocess.STDOUT, check=True)
+        if root.resolve() != Path(self.outdir).resolve():
+            self.move_results_from_rundir()
 
     def verify_ddf_container(self) -> str:
-        ddf_container = os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif")
+        ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
         if not os.path.isfile(ddf_container):
             logger.critical("Container `ddf-pipeline.sif` not found in $CWL_SINGULARITY_CACHE")
             raise RuntimeError("No viable ddf-pipeline container was found.")
@@ -495,7 +464,7 @@ class DDFConfig:
     def setup_apptainer_variables(self, workdir):
         try:
             out = subprocess.check_output(["singularity", "--version"]).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
             if "APPTAINER_BINDPATH" not in os.environ:
@@ -571,49 +540,23 @@ def ddf_pipeline(
             help="[slurm] this will run the pipeline on the node's local $TMPDIR instead of a user-defined rundir."
         ),
     ] = False,
-    config_prepared: Annotated[
-        bool,
-        Parameter(help="Use the supplied parset without selecting DR3 inputs again."),
-    ] = False,
 ):
     logger.info("Starting ddf-pipeline")
-    args = locals()
     config = DDFConfig(
-        args["mspath"],
-        os.path.abspath(args["config_file"]),
+        mspath,
+        config_file,
         outdir=outdir,
     )
-    unneeded_keys = [
-        "mspath",
-        "scheduler",
-        "rundir",
-        "slurm_queue",
-        "slurm_account",
-        "slurm_time",
-        "slurm_cores",
-        "slurm_memory",
-        "restart",
-        "outdir",
-        "use_node_scratch",
-        "config_prepared",
-    ]
-    args_for_linc = args.copy()
-    for key in unneeded_keys:
-        args_for_linc.pop(key)
-    if args["use_node_scratch"]:
-        args["rundir"] = "$TMPDIR"
     config.run_workflow(
-        scheduler=args["scheduler"],
+        scheduler=scheduler,
         slurm_params={
-            "queue": args["slurm_queue"],
-            "account": args["slurm_account"],
-            "time": args["slurm_time"],
-            "cores": args["slurm_cores"],
-            "memory": args["slurm_memory"],
+            "queue": slurm_queue,
+            "account": slurm_account,
+            "time": slurm_time,
+            "cores": slurm_cores,
+            "memory": slurm_memory,
         },
-        workdir=args["rundir"],
-        outdir=args["outdir"],
-        restart=args["restart"],
-        use_node_scratch=args["use_node_scratch"],
-        config_prepared=args["config_prepared"],
+        workdir=rundir,
+        restart=restart,
+        use_node_scratch=use_node_scratch,
     )
