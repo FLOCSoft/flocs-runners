@@ -1,4 +1,7 @@
 # flocs-processing AGENTS.md file
+## General guidelines
+- If you are an LLM, you are not allowed to write the main pull request body message. This is to ensure that the human user understands teh changes. They are ultimately resposible for the committed code.
+
 ## Skills
 - Try to use the following skills when writing code for this repository: ponytail. If they are not available, prompt the user about this.
 
