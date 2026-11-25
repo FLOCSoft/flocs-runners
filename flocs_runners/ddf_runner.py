@@ -320,7 +320,7 @@ class DDFConfig:
         self.ddfconfig = str(generated)
         logger.info(f"Selected DDF {mode} mode: {reason}; config: {generated}")
 
-    def prepare_run_inputs(self, workdir):
+    def prepare_run_inputs(self, workdir: str, source_dir: Optional[str] = None):
         """Save the selected configuration and cluster catalogue with the run."""
         original = Path(self.ddfconfig)
         config = configparser.ConfigParser(interpolation=None)
@@ -328,6 +328,16 @@ class DDFConfig:
         with original.open() as stream:
             config.read_file(stream)
         root = Path(workdir).resolve()
+        if source_dir is not None:
+            # Keep relative input paths anchored to the original working directory.
+            for section, options in {
+                "inputmodel": ("basedicomodel", "basemaskname", "baseimagename"),
+                "image": ("clusterfile",),
+            }.items():
+                for option in options:
+                    value = config.get(section, option, fallback="").strip()
+                    if value.lower() not in ("", "none") and not Path(value).is_absolute():
+                        config.set(section, option, (Path(source_dir) / value).as_posix())
         model = config.get("inputmodel", "basedicomodel", fallback="").strip()
         clusterfile = config.get("image", "clusterfile", fallback="").strip()
         if model.lower() not in ("", "none") and clusterfile.lower() not in ("", "none"):
@@ -433,8 +443,9 @@ class DDFConfig:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
         workdir = str(Path(workdir).resolve())
-        if batch and not restart:
-            self.outdir = Path(outdir).resolve().as_posix()
+        if not restart:
+            if batch:
+                self.outdir = Path(outdir).resolve().as_posix()
             self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
         else:
             self.rundir = workdir
@@ -446,7 +457,7 @@ class DDFConfig:
             prepared = Path(self.rundir) / "ddf-input.cfg"
             if prepared.is_file():
                 self.ddfconfig = str(prepared)
-        self.setup_apptainer_variables(self.rundir)
+        self.setup_apptainer_variables(self.rundir if batch else workdir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
 
@@ -455,7 +466,7 @@ class DDFConfig:
             return
 
         self.prepare_dr3_config()
-        self.prepare_run_inputs(self.rundir)
+        self.prepare_run_inputs(self.rundir, source_dir=None if batch else workdir)
 
         if batch:
             Path(self.outdir).mkdir(parents=True, exist_ok=True)
@@ -475,22 +486,23 @@ class DDFConfig:
             return
 
         root = Path(self.rundir)
-        msfiles = sorted(root.glob("*pre-cal.ms"))
-        if not msfiles:
-            raise FileNotFoundError(f"No input MeasurementSets in {self.rundir}")
-        cmd = ["apptainer", "exec", ddf_container, "make_mslists.py", "force"]
+        for ms in self.msfiles:
+            shutil.copytree(ms, root / Path(ms).name)
+
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        ddf = ["apptainer", "exec", "--bind", self.outdir, ddf_container]
+        cmd = [*ddf, "make_mslists.py", "force"]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
         subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
         with open(root / "big-mslist.txt", "w") as mslist:
-            for ms in msfiles:
-                mslist.write(f"{ms.name}\n")
+            for ms in self.msfiles:
+                mslist.write(f"{Path(ms).name}\n")
 
-        cmd = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
+        cmd = [*ddf, "pipeline.py", self.ddfconfig]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
         with (root / "log_DDF-pipeline.txt").open("wb") as log_file:
             subprocess.run(cmd, cwd=self.rundir, stdout=log_file, stderr=subprocess.STDOUT, check=True)
-        if root.resolve() != Path(self.outdir).resolve():
-            self.move_results_from_rundir()
+        self.move_results_from_rundir()
 
     def verify_ddf_container(self) -> str:
         ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
@@ -542,7 +554,7 @@ def ddf_pipeline(
     ] = "singleMachine",
     rundir: Annotated[
         str,
-        Parameter(help="Directory to run in."),
+        Parameter(help="Parent directory for a fresh run, or the existing run directory for a restart."),
     ] = os.getcwd(),
     outdir: Annotated[
         str,
