@@ -425,8 +425,14 @@ class DDFConfig:
 
         log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
         logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(command)}")
+        try:
+            out = subprocess.check_output(command, cwd=self.rundir, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as error:
+            with open(log_path, "wb") as log_file:
+                log_file.write(error.output or b"")
+            raise
         with open(log_path, "wb") as log_file:
-            subprocess.run(command, cwd=self.rundir, stdout=log_file, stderr=subprocess.STDOUT, check=True)
+            log_file.write(out)
         self.move_results_from_rundir()
 
     def run_workflow(
@@ -500,8 +506,15 @@ class DDFConfig:
 
         cmd = [*ddf, "pipeline.py", self.ddfconfig]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
-        with (root / "log_DDF-pipeline.txt").open("wb") as log_file:
-            subprocess.run(cmd, cwd=self.rundir, stdout=log_file, stderr=subprocess.STDOUT, check=True)
+        log_path = root / "log_DDF-pipeline.txt"
+        try:
+            out = subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as error:
+            with log_path.open("wb") as log_file:
+                log_file.write(error.output or b"")
+            raise
+        with log_path.open("wb") as log_file:
+            log_file.write(out)
         self.move_results_from_rundir()
 
     def verify_ddf_container(self) -> str:
