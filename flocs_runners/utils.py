@@ -269,30 +269,34 @@ EOT
 
 
 def add_slurm_skeleton_ddf(
-    ddf_container: str,
     data_dir: str,
-    workdir: str,
-    outdir: str,
-    obsid: str,
+    workdir: str = os.getcwd(),
+    outdir: str = "",
     time: str = "",
     cores: int = 0,
+    job_name: str = "",
     queue: str = "",
     account: str = "",
     memory: int = 0,
     local_scratch: bool = False,
-):
+) -> str:
     """Stage the input MSes and run DDF with the prepared parset."""
-    directives = [f"#SBATCH --job-name DDF-pipeline_L{obsid}"]
+    sbatch_line = "#SBATCH "
     if time:
-        directives.append(f"#SBATCH -t {time}")
+        sbatch_line += f"-t {time} "
     if cores:
-        directives.append(f"#SBATCH -c {cores}")
+        sbatch_line += f"-c {cores} "
+    if job_name:
+        sbatch_line += f"--job-name {job_name} "
     if queue:
-        directives.append(f"#SBATCH -p {queue}")
+        sbatch_line += f"-p {queue} "
     if account:
-        directives.append(f"#SBATCH -A {account}")
+        sbatch_line += f"-A {account} "
     if memory:
-        directives.append(f"#SBATCH --mem {memory}GB")
+        sbatch_line += f"--mem {memory}GB "
+
+    ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
+    outdir = os.path.abspath(outdir or os.curdir)
 
     setup = ['cd -- "$SUBMIT_DIR"']
     if local_scratch:
@@ -303,16 +307,15 @@ def add_slurm_skeleton_ddf(
             'catalogue="$SUBMIT_DIR/image_dirin_SSD_m.npy.ClusterCat.npy"',
             'if [[ -f $catalogue ]]; then cp -- "$catalogue" .; fi',
         ]
-    return "\n".join([
+    wrapped = "\n".join([
         "#!/bin/bash",
-        *directives,
+        sbatch_line.rstrip(),
         "set -eo pipefail",
         "shopt -s nullglob globstar",
         f"SUBMIT_DIR={shlex.quote(workdir)}",
         f"DATA_DIR={shlex.quote(data_dir)}",
         f"OUTDIR={shlex.quote(outdir)}",
         f"CONTAINER={shlex.quote(ddf_container)}",
-        f"RESULT_PREFIX={shlex.quote(f'DDF-pipeline_L{obsid}')}",
         *setup,
         r'''WORKDIR=$(pwd -P)
 printf 'DDF working directory: %s\n' "$WORKDIR"
@@ -351,11 +354,13 @@ for link in SOLSDIR/**/*.npz; do
     ln -sfn -- "$relative" "$link"
 done
 
-destination="$OUTDIR/${RESULT_PREFIX}_$(date -u +%Y_%m_%d-%H_%M_%S)"
+first_ms=${inputs[0]##*/}
+destination="$OUTDIR/DDF-pipeline_${first_ms%%_*}_$(date -u +%Y_%m_%d-%H_%M_%S)"
 cd /
 mv -T -- "$WORKDIR" "$destination"
 ''',
     ])
+    return wrapped
 
 
 def add_apptainer_skeleton(contents: str, container: str, bindpaths: str = ""):

@@ -1,4 +1,3 @@
-from .ddf_model import ensure_compatible_dr3_model
 from .utils import (
     add_slurm_skeleton_ddf,
     extract_obsid_from_ms,
@@ -10,6 +9,7 @@ import hashlib
 import json
 from http.client import HTTPException
 import os
+import pickle
 import shlex
 import shutil
 import structlog
@@ -27,16 +27,9 @@ import numpy as np
 from casacore.tables import table
 from astropy.io import fits
 from cyclopts import Parameter
-from typing_extensions import Annotated, Optional, TypedDict
+from typing_extensions import Annotated, Any, Optional
 
 logger = structlog.getLogger()
-
-
-class _DR3ArchiveEntry(TypedDict):
-    key: str
-    checksum: str
-    size: int
-    links: dict[str, str]
 
 
 class DDFConfig:
@@ -48,7 +41,7 @@ class DDFConfig:
         ddfconfig: str,
         outdir: str = os.getcwd(),
     ):
-        self.outdir = str(Path(outdir).resolve())
+        self.outdir = Path(outdir).resolve().as_posix()
         self.mspath = mspath
         self.ddfconfig = os.path.abspath(ddfconfig)
 
@@ -77,7 +70,7 @@ class DDFConfig:
                     digest.update(block)
         return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
 
-    def _fetch_dr3_archive(self, entry: _DR3ArchiveEntry, cache: Path) -> Path:
+    def _fetch_dr3_archive(self, entry: dict[str, Any], cache: Path) -> Path:
         """Return a verified local copy of a LoTSS-DR3 archive.
 
         Reuse a cached file if its size and checksum match the repository metadata.
@@ -227,6 +220,45 @@ class DDFConfig:
         return {"field": field, "cache": cache, "model": cache / required[0],
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
+    @staticmethod
+    def ensure_compatible_dr3_model(model_path: Path, output_path: Path) -> dict[str, Any]:
+        """Validate a DR3 DicoModel file and add missing defaults expected by DDF."""
+        with open(model_path, "rb") as stream:
+            model = pickle.load(stream, encoding="latin-1")
+        if not model.get("GD") or "ModelShape" not in model or not len(model.get("Comp", {})):
+            raise ValueError("Invalid DicoModel")
+        added = []
+        for section, values in {
+            "Weight": {
+                "EnableSigmoidTaper": 0,
+                "SigmoidTaperInnerCutoff": 0,
+                "SigmoidTaperOuterCutoff": 0,
+                "SigmoidTaperInnerRolloffStrength": 0.5,
+                "SigmoidTaperOuterRolloffStrength": 0.5,
+            },
+            "Data": {"Dask": False},
+        }.items():
+            for key, value in values.items():
+                if key not in model["GD"].setdefault(section, {}):
+                    model["GD"][section][key] = value
+                    added.append(section + "." + key)
+        information = {
+            "added_defaults": added,
+            "npix": int(model["GD"]["Image"]["NPix"]),
+            "cell": float(model["GD"]["Image"]["Cell"]),
+        }
+        staged = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=output_path.parent, delete=False) as stream:
+                staged = Path(stream.name)
+                # Match the pickle protocol used by the DDF container's Python 3.9.
+                pickle.dump(model, stream, protocol=4)
+            staged.replace(output_path)
+        finally:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
+        return information
+
     def prepare_dr3_config(self):
         """Choose lite/full and write the configuration submitted to DDF."""
         original = Path(self.ddfconfig)
@@ -244,7 +276,7 @@ class DDFConfig:
                 model = products["model"]
                 compatible = model.with_name(model.stem + ".compatible.DicoModel")
                 try:
-                    information = ensure_compatible_dr3_model(model, compatible)
+                    information = self.ensure_compatible_dr3_model(model, compatible)
                 except Exception as error:
                     # Model decoding and serialization can raise library-specific errors.
                     raise ValueError(f"Could not prepare DR3 model {model}: {error}") from error
@@ -385,7 +417,7 @@ class DDFConfig:
         self,
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        outdir: Optional[str] = None,
+        outdir: str = os.getcwd(),
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
@@ -394,10 +426,9 @@ class DDFConfig:
         if not batch and scheduler != "singleMachine":
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
-        if outdir is not None:
-            self.outdir = str(Path(outdir).resolve())
         workdir = str(Path(workdir).resolve())
         if batch and not restart:
+            self.outdir = Path(outdir).resolve().as_posix()
             self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
         else:
             self.rundir = workdir
@@ -423,11 +454,10 @@ class DDFConfig:
         if batch:
             Path(self.outdir).mkdir(parents=True, exist_ok=True)
             wrapped_cmd = add_slurm_skeleton_ddf(
-                ddf_container=ddf_container,
                 data_dir=os.path.abspath(self.mspath),
                 workdir=self.rundir,
                 outdir=self.outdir,
-                obsid=self.obsid,
+                job_name=f"DDF-pipeline_L{self.obsid}",
                 local_scratch=use_node_scratch,
                 **slurm_params,
             )
@@ -444,8 +474,10 @@ class DDFConfig:
             raise FileNotFoundError(f"No input MeasurementSets in {self.rundir}")
         cmd = ["apptainer", "exec", ddf_container, "make_mslists.py", "force"]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
-        subprocess.run(cmd, cwd=self.rundir, check=True)
-        (root / "big-mslist.txt").write_text("".join(f"{ms.name}\n" for ms in msfiles))
+        subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
+        with open(root / "big-mslist.txt", "w") as mslist:
+            for ms in msfiles:
+                mslist.write(f"{ms.name}\n")
 
         cmd = ["apptainer", "exec", ddf_container, "pipeline.py", self.ddfconfig]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
@@ -557,6 +589,7 @@ def ddf_pipeline(
             "memory": slurm_memory,
         },
         workdir=rundir,
+        outdir=outdir,
         restart=restart,
         use_node_scratch=use_node_scratch,
     )
