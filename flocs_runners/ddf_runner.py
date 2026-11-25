@@ -272,31 +272,37 @@ class DDFConfig:
         mode, reason = "full", "No complete usable exact-field DR3 model"
         try:
             products = self.fetch_dr3_model()
-            if products:
-                model = products["model"]
-                compatible = model.with_name(model.stem + ".compatible.DicoModel")
-                try:
-                    information = self.ensure_compatible_dr3_model(model, compatible)
-                except Exception as error:
-                    # Model decoding and serialization can raise library-specific errors.
-                    raise ValueError(f"Could not prepare DR3 model {model}: {error}") from error
+        except (OSError, HTTPException, EOFError, ValueError, KeyError) as error:
+            products = None
+            reason = str(error)
+
+        if products:
+            model = products["model"]
+            compatible = model.with_name(model.stem + ".compatible.DicoModel")
+            try:
+                information = self.ensure_compatible_dr3_model(model, compatible)
+            except Exception as error:
+                # Model decoding and serialization can raise library-specific errors.
+                reason = f"Could not prepare DR3 model {model}: {error}"
+            else:
                 logger.info("Prepared DR3 model", **information)
                 if (config.getint("image", "imsize", fallback=20000) != information["npix"]
                         or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
-                    raise ValueError("Requested image size/pixel scale differs from the DR3 model")
-                if config.get("image", "phasecenter", fallback="").strip().lower() not in ("", "none"):
-                    raise ValueError("Explicit image phase centre supplied; using a full run")
-                if not config.has_section("inputmodel"):
-                    config.add_section("inputmodel")
-                config.set("inputmodel", "basedicomodel", str(compatible.with_suffix("")))
-                config.set("inputmodel", "basemaskname", str(products["mask"]))
-                config.set("inputmodel", "baseimagename", str(products["image"])[:-len(".app.restored.fits")])
-                if not config.has_section("image"):
-                    config.add_section("image")
-                config.set("image", "clusterfile", str(products["clusters"]))
-                mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
-        except (OSError, URLError, HTTPException, EOFError, ValueError, KeyError, tarfile.TarError) as error:
-            reason = str(error)
+                    reason = "Requested image size/pixel scale differs from the DR3 model"
+                elif config.get("image", "phasecenter", fallback="").strip().lower() not in ("", "none"):
+                    reason = "Explicit image phase centre supplied; using a full run"
+                else:
+                    if not config.has_section("inputmodel"):
+                        config.add_section("inputmodel")
+                    config.set("inputmodel", "basedicomodel", str(compatible.with_suffix("")))
+                    config.set("inputmodel", "basemaskname", str(products["mask"]))
+                    config.set("inputmodel", "baseimagename", str(products["image"])[:-len(".app.restored.fits")])
+                    if not config.has_section("image"):
+                        config.add_section("image")
+                    config.set("image", "clusterfile", str(products["clusters"]))
+                    mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
+
+        if mode == "full":
             logger.warning(f"DR3 model reuse unavailable; selecting full DDF run: {reason}")
         if not config.has_section("data"):
             config.add_section("data")
