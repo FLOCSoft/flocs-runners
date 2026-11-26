@@ -152,16 +152,13 @@ class DDFConfig:
         required = [stem + ".DicoModel", stem + ".mask01.fits", stem + ".app.restored.fits",
                     "image_dirin_SSD_m.npy.ClusterCat.npy"]
         entries = record.get("files", {}).get("entries", {})
-        missing = {"images.tar"} - entries.keys()
+        auxiliary = "uv_misc.tar" if "uv_misc.tar" in entries else "uv.tar"
+        archives = ("images.tar", auxiliary)
+        missing = set(archives) - entries.keys()
         if missing:
             raise ValueError(f"Missing LoTSS archives for {field}: {sorted(missing)}; full DDF is required")
         # Start both recalls before waiting on either missing archive.
-        auxiliary = "uv_misc.tar" if "uv_misc.tar" in entries else "uv.tar"
-        if auxiliary not in entries:
-            auxiliary = "misc.tar"
-        for name in ("images.tar", auxiliary):
-            if name not in entries:
-                continue
+        for name in archives:
             if (cache / name).is_file():
                 continue
             try:
@@ -171,9 +168,7 @@ class DDFConfig:
             except (OSError, URLError, HTTPException) as error:
                 logger.warning(f"LoTSS recall request for {name} failed; will retry at download: {error}")
         extracted = set()
-        for name in ("images.tar", "uv_misc.tar", "misc.tar", "uv.tar"):
-            if name not in entries:
-                continue
+        for name in archives:
             logger.info(f"Fetching LoTSS-{release.upper()} {name} for exact field {field}")
             try:
                 archive = self._fetch_dr3_archive(entries[name], cache)
