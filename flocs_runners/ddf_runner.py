@@ -1,28 +1,40 @@
 from .utils import (
     add_slurm_skeleton_ddf,
-    detect_compute_cluster,
     extract_obsid_from_ms,
     get_container_env_var,
 )
 import glob
+import configparser
+import hashlib
+import json
+from http.client import HTTPException
+from importlib import import_module
 import os
-import pathlib
+import pickle
 import shlex
 import shutil
 import structlog
 import subprocess
 import sys
+import tarfile
 import tempfile
+import zlib
 from pathlib import Path
-from time import gmtime, strftime
+from time import gmtime, sleep, strftime
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import URLError
+import numpy as np
+from casacore.tables import table
+from astropy.io import fits
 from cyclopts import Parameter
-from typing_extensions import Annotated, Optional
+from typing_extensions import Annotated, Any, Optional
 
 logger = structlog.getLogger()
 
 
 class DDFConfig:
-    """"""
+    """Prepare and run a DDF-pipeline job."""
 
     def __init__(
         self,
@@ -30,33 +42,345 @@ class DDFConfig:
         ddfconfig: str,
         outdir: str = os.getcwd(),
     ):
-        self.outdir = outdir
-        self.cluster = detect_compute_cluster()
+        self.outdir = Path(outdir).resolve().as_posix()
         self.mspath = mspath
-        self.ddfconfig = ddfconfig
+        self.ddfconfig = os.path.abspath(ddfconfig)
 
         filedir = os.path.join(os.path.abspath(mspath), "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
-        files = sorted(glob.glob(filedir))
-        logger.info(f"Found {len(files)} files")
-        if not len(files):
+        self.msfiles = sorted(glob.glob(filedir))
+        logger.info(f"Found {len(self.msfiles)} files")
+        if not len(self.msfiles):
             logger.critical("No input MSes found")
             sys.exit(-1)
 
         try:
-            self.obsid = extract_obsid_from_ms(files[0])
+            self.obsid = extract_obsid_from_ms(self.msfiles[0])
         except IndexError:
             self.obsid = "unknown"
 
-    def setup_rundir(self, workdir):
-        # TODO: fix tempdir structure to avoid nested tmpdir on Slurm submission.
-        self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
+    @staticmethod
+    def _file_digest(path: Path, algorithm: str) -> str:
+        digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
+        with open(path, "rb") as stream:
+            for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+                if algorithm == "adler32":
+                    digest = zlib.adler32(block, digest)
+                else:
+                    digest.update(block)
+        return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
+
+    def _fetch_dr3_archive(self, entry: dict[str, Any], cache: Path) -> Path:
+        """Return a verified local copy of a LoTSS archive.
+
+        Reuse a cached file if its size and checksum match the repository metadata.
+        Otherwise, fetch it from SURF and apply the same checks before caching it.
+        """
+        archive = cache / entry["key"]
+        algorithm, expected = entry["checksum"].split(":", 1)
+        if archive.is_file():
+            if archive.stat().st_size == entry["size"] and self._file_digest(archive, algorithm) == expected:
+                return archive
+            logger.warning(f"Removing invalid cached LoTSS archive: {archive}")
+            archive.unlink()
+        temporary = None
+        try:
+            while True:
+                response = urlopen(entry["links"]["content"], timeout=60)
+                if response.status != 202:
+                    break
+                delay = response.headers.get("Retry-After", "60")
+                response.close()
+                logger.info(f"Waiting for SURF to restore {entry['key']} from tape")
+                sleep(max(1, float(delay)))
+            with response:
+                if response.status != 200:
+                    raise ValueError(f"Unexpected SURF download status: {response.status}")
+                size = 0
+                with tempfile.NamedTemporaryFile(dir=cache, suffix=".part", delete=False) as stream:
+                    temporary = Path(stream.name)
+                    for block in iter(lambda: response.read(8 * 1024 * 1024), b""):
+                        stream.write(block)
+                        size += len(block)
+                        if size > entry["size"]:
+                            raise ValueError(f"SURF download exceeds its published size: {entry['key']}")
+                if size != entry["size"] or self._file_digest(temporary, algorithm) != expected:
+                    raise ValueError(f"Downloaded DR3 archive failed its size/checksum: {entry['key']}")
+            os.replace(temporary, archive)
+            return archive
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def fetch_dr3_model(self):
+        """Fetch native DR3 or DR2 model paths for the exact MS field; prefer DR3.
+
+        Existing tape archives are recalled and waited for. An absent field, failed
+        download or incomplete product set leaves full mode selected.
+        Verified archives are reused; the required products are extracted each time.
+        """
+        names = set()
+        for ms in self.msfiles:
+            with table(ms + "::OBSERVATION", readonly=True, ack=False) as observation:
+                for row in range(observation.nrows()):
+                    target = observation.getcell("LOFAR_TARGET", row)
+                    names.update(str(value).strip() for value in np.asarray(target).ravel())
+        if len(names) != 1:
+            raise ValueError(f"LoTSS reuse requires one exact field name; found {sorted(names)}")
+        field = names.pop()
+        query = urlencode({"q": f'"{field}"', "size": 100})
+        with urlopen("https://repository.surf.nl/api/records?" + query, timeout=30) as response:
+            hits = json.load(response)["hits"]["hits"]
+        for release, field_key in (("dr3", "id"), ("dr2", "mosaic_id")):
+            schema = f"https://repository.surf.nl/schema/lotss-{release}"
+            matches = [record for record in hits
+                       if record.get("custom_fields", {}).get("collection:metadata", {}).get(field_key) == field
+                       and record["custom_fields"]["collection:metadata"].get("$schema") == schema]
+            if matches:
+                break
+        if len(matches) != 1:
+            raise ValueError(f"Expected one exact SURF LoTSS record for {field}; found {len(matches)}")
+        with urlopen("https://repository.surf.nl/api/records/" + matches[0]["id"], timeout=30) as response:
+            record = json.load(response)
+        metadata = record.get("custom_fields", {}).get("collection:metadata", {})
+        if metadata.get(field_key) != field or metadata.get("$schema") != schema:
+            raise ValueError("SURF record field differs from the requested MS field")
+        # Never use an archive-provided path for extraction or a different/nearest field.
+        cache = Path(self.outdir).resolve() / ".dr3-models" / record["id"]
+        cache.mkdir(parents=True, exist_ok=True)
+        stem = "image_full_ampphase_di_m.NS"
+        required = [stem + ".DicoModel", stem + ".mask01.fits", stem + ".app.restored.fits",
+                    "image_dirin_SSD_m.npy.ClusterCat.npy"]
+        entries = record.get("files", {}).get("entries", {})
+        auxiliary = "uv_misc.tar" if "uv_misc.tar" in entries else "uv.tar"
+        archives = ("images.tar", auxiliary)
+        missing = set(archives) - entries.keys()
+        if missing:
+            raise ValueError(f"Missing LoTSS archives for {field}: {sorted(missing)}; full DDF is required")
+        # Start both recalls before waiting on either missing archive.
+        for name in archives:
+            if (cache / name).is_file():
+                continue
+            try:
+                request = Request(entries[name]["links"]["content"], headers={"Range": "bytes=0-0"})
+                with urlopen(request, timeout=60):
+                    pass
+            except (OSError, URLError, HTTPException) as error:
+                logger.warning(f"LoTSS recall request for {name} failed; will retry at download: {error}")
+        extracted = set()
+        for name in archives:
+            logger.info(f"Fetching LoTSS-{release.upper()} {name} for exact field {field}")
+            try:
+                archive = self._fetch_dr3_archive(entries[name], cache)
+                with tarfile.open(archive, "r:") as bundle:
+                    members = {}
+                    for member in bundle:
+                        basename = Path(member.name).name
+                        if basename in required:
+                            if basename in members or not member.isfile():
+                                raise ValueError(f"Ambiguous or non-regular DR3 model member: {member.name}")
+                            members[basename] = member
+                    for basename, member in members.items():
+                        staged = None
+                        try:
+                            with bundle.extractfile(member) as source:
+                                with tempfile.NamedTemporaryFile(dir=cache, delete=False) as target:
+                                    staged = Path(target.name)
+                                    shutil.copyfileobj(source, target)
+                            if staged.stat().st_size != member.size:
+                                raise ValueError(f"Incomplete extracted model file: {basename}")
+                            os.replace(staged, cache / basename)
+                            extracted.add(basename)
+                        finally:
+                            if staged is not None:
+                                staged.unlink(missing_ok=True)
+            except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
+                logger.warning(f"LoTSS-{release.upper()} {name} unavailable for {field}: {error}")
+            if set(required) <= extracted:
+                break
+        if not set(required) <= extracted:
+            raise ValueError(f"Incomplete LoTSS products for {field}: missing {sorted(set(required) - extracted)}")
+
+        with fits.open(cache / required[2], memmap=True) as image, fits.open(cache / required[1], memmap=True) as mask:
+            header = image[0].header
+            for key in ("NAXIS1", "NAXIS2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CDELT1", "CDELT2"):
+                if not np.isclose(header[key], mask[0].header[key], rtol=0, atol=1e-9):
+                    raise ValueError(f"LoTSS image/mask geometry differs: {key}")
+            with table(self.msfiles[0] + "::FIELD", readonly=True, ack=False) as msfield:
+                ra, dec = np.degrees(np.asarray(msfield.getcell("PHASE_DIR", 0)).reshape(-1, 2)[0])
+            from astropy.coordinates import SkyCoord
+            centre = SkyCoord(header["CRVAL1"], header["CRVAL2"], unit="deg")
+            if SkyCoord(ra, dec, unit="deg").separation(centre).arcsec > 1:
+                raise ValueError("LoTSS model phase centre differs from the input MS")
+        clusters = np.load(cache / required[3], allow_pickle=False)
+        if not len(clusters) or not clusters.dtype.names or not {"ra", "dec"} <= set(clusters.dtype.names):
+            raise ValueError("Invalid LoTSS cluster catalogue")
+        return {"field": field, "cache": cache, "model": cache / required[0],
+                "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
+
+    @staticmethod
+    def repair_dr3_model(model_path: Path) -> dict[str, Any]:
+        """Validate an extracted cached model and add missing DDF defaults."""
+        with open(model_path, "rb") as stream:
+            model = pickle.load(stream, encoding="latin-1")
+        if not model.get("GD") or "ModelShape" not in model or not len(model.get("Comp", {})):
+            raise ValueError("Invalid DicoModel")
+        information = {
+            "npix": int(model["GD"]["Image"]["NPix"]),
+            "cell": float(model["GD"]["Image"]["Cell"]),
+            "added_defaults": [],
+        }
+        for section, values in {
+            "Weight": {
+                "EnableSigmoidTaper": 0,
+                "SigmoidTaperInnerCutoff": 0,
+                "SigmoidTaperOuterCutoff": 0,
+                "SigmoidTaperInnerRolloffStrength": 0.5,
+                "SigmoidTaperOuterRolloffStrength": 0.5,
+            },
+            "Data": {"Dask": False},
+        }.items():
+            for key, value in values.items():
+                if key not in model["GD"].setdefault(section, {}):
+                    model["GD"][section][key] = value
+                    information["added_defaults"].append(f"{section}.{key}")
+        if not information["added_defaults"]:
+            return information
+
+        # Replace the extracted cache file only after a complete write; keep the archive intact.
+        # NumPy 2 moved these globals; DDF containers with NumPy 1 need their old names.
+        class NumpyModule:
+            def __init__(self, name):
+                self.name = name
+
+            def __reduce__(self):
+                return import_module, (self.name,)
+
+        class CompatiblePickler(pickle.Pickler):
+            def reducer_override(self, obj):
+                module = getattr(obj, "__module__", "") or ""
+                if module.startswith("numpy._core.") and hasattr(obj, "__name__"):
+                    legacy = module.replace("numpy._core.", "numpy.core.", 1)
+                    return getattr, (NumpyModule(legacy), obj.__name__)
+                return NotImplemented
+
+        staged = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=model_path.parent, delete=False) as stream:
+                staged = Path(stream.name)
+                CompatiblePickler(stream, protocol=4).dump(model)
+            staged.replace(model_path)
+        finally:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
+        return information
+
+    def prepare_dr3_config(self, lite: bool = False, restart: bool = False):
+        """Try LoTSS reuse when requested; otherwise keep the supplied configuration."""
+        if not lite or restart:
+            return
+        original = Path(self.ddfconfig)
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        with original.open() as stream:
+            config.read_file(stream)
+        if config.get("inputmodel", "basedicomodel", fallback="").strip().lower() not in ("", "none"):
+            logger.info("Using the explicitly configured input sky model")
+            return
+        mode, reason = "full", "No complete usable exact-field LoTSS model"
+        products = None
+        try:
+            products = self.fetch_dr3_model()
+        except (OSError, HTTPException, EOFError, ValueError, KeyError) as error:
+            reason = str(error)
+
+        if products:
+            model = products["model"]
+            try:
+                information = self.repair_dr3_model(model)
+            except Exception as error:
+                # Model decoding and serialization can raise library-specific errors.
+                reason = f"Could not prepare DR3 model {model}: {error}"
+            else:
+                logger.info("Prepared DR3 model", model=str(model), **information)
+                if (config.getint("image", "imsize", fallback=20000) != information["npix"]
+                        or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
+                    reason = "Requested image size/pixel scale differs from the DR3 model"
+                elif config.get("image", "phasecenter", fallback="").strip().lower() not in ("", "none"):
+                    reason = "Explicit image phase centre supplied; using a full run"
+                else:
+                    if not config.has_section("inputmodel"):
+                        config.add_section("inputmodel")
+                    config.set("inputmodel", "basedicomodel", str(model.with_suffix("")))
+                    config.set("inputmodel", "basemaskname", str(products["mask"]))
+                    config.set("inputmodel", "baseimagename", str(products["image"])[:-len(".app.restored.fits")])
+                    if not config.has_section("image"):
+                        config.add_section("image")
+                    config.set("image", "clusterfile", str(products["clusters"]))
+                    mode, reason = "lite", f"Complete validated SURF LoTSS model for {products['field']}"
+
+        if mode == "full":
+            logger.warning(f"LoTSS model reuse unavailable; selecting full DDF run: {reason}")
+            return
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        directory = Path(tempfile.mkdtemp(prefix=f"DDF-inputs_L{self.obsid}.", dir=os.path.abspath(self.outdir)))
+        generated = directory / "ddf-input.cfg"
+        with generated.open("w") as stream:
+            config.write(stream)
+        self.ddfconfig = str(generated)
+        logger.info(f"Selected DDF {mode} mode: {reason}; config: {generated}")
+
+    def prepare_run_inputs(self, workdir: str, source_dir: Optional[str] = None):
+        """Save the selected configuration and cluster catalogue with the run."""
+        original = Path(self.ddfconfig)
+        config = configparser.ConfigParser(interpolation=None)
+        config.optionxform = str
+        with original.open() as stream:
+            config.read_file(stream)
+        root = Path(workdir).resolve()
+        if source_dir is not None:
+            # Keep relative input paths anchored to the original working directory.
+            for section, options in {
+                "inputmodel": ("basedicomodel", "basemaskname", "baseimagename"),
+                "image": ("clusterfile",),
+            }.items():
+                for option in options:
+                    value = config.get(section, option, fallback="").strip()
+                    if value.lower() not in ("", "none") and not Path(value).is_absolute():
+                        config.set(section, option, (Path(source_dir) / value).as_posix())
+        model = config.get("inputmodel", "basedicomodel", fallback="").strip()
+        clusterfile = config.get("image", "clusterfile", fallback="").strip()
+        if model.lower() not in ("", "none") and clusterfile.lower() not in ("", "none"):
+            cluster = Path(clusterfile)
+            if not cluster.is_absolute():
+                cluster = root / cluster
+            saved_cluster = root / "image_dirin_SSD_m.npy.ClusterCat.npy"
+            if cluster.resolve() != saved_cluster.resolve():
+                shutil.copy2(cluster, saved_cluster)
+            config.set("image", "clusterfile", saved_cluster.name)
+        generated = root / "ddf-input.cfg"
+        with generated.open("w") as stream:
+            config.write(stream)
+        self.ddfconfig = str(generated)
+
+    @staticmethod
+    def make_symlinks_relative(workdir):
+        """Make internal solution links relative before moving the run directory."""
+        root = Path(workdir).resolve()
+        for link in (root / "SOLSDIR").rglob("*.npz"):
+            if link.is_symlink():
+                target = Path(os.readlink(link))
+                if target.is_absolute() and target.is_relative_to(root):
+                    if not link.is_file():
+                        raise FileNotFoundError(f"Missing DDF solution: {link} -> {target}")
+                    link.unlink()
+                    link.symlink_to(os.path.relpath(target, link.parent))
 
     def move_results_from_rundir(self):
-        source = self.rundir if self.restarting else pathlib.Path(self.rundir).parent.absolute().as_posix()
+        self.make_symlinks_relative(self.rundir)
         outpath = self.get_results_path()
-        logger.info(f"Copying results from {source} to: {outpath}")
-        shutil.move(source, outpath)
+        logger.info(f"Moving results from {self.rundir} to: {outpath}")
+        shutil.move(self.rundir, outpath)
 
     def get_results_path(self):
         date = strftime("%Y_%m_%d-%H_%M_%S", gmtime())
@@ -85,7 +409,7 @@ class DDFConfig:
                 "#!/bin/bash",
                 *directives,
                 f"cd {shlex.quote(self.rundir)} || exit $?",
-                f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
+                f"{shlex.join(map(os.fspath, command))} > {shlex.quote(log_path)} 2>&1",
                 "status=$?",
                 "if [ \"$status\" -eq 0 ]; then",
                 "    cd / || exit $?",
@@ -110,7 +434,7 @@ class DDFConfig:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
         log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
-        logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(command)}")
+        logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(map(os.fspath, command))}")
         try:
             out = subprocess.check_output(command, cwd=self.rundir, stderr=subprocess.STDOUT)
             with open(log_path, "wb") as log_file:
@@ -119,6 +443,7 @@ class DDFConfig:
         except subprocess.CalledProcessError as error:
             with open(log_path, "wb") as log_file:
                 log_file.write(error.output or b"")
+            raise
 
     def run_workflow(
         self,
@@ -128,81 +453,95 @@ class DDFConfig:
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
+        lite: bool = False,
     ):
+        if scheduler not in {"slurm", "slurm-srun", "singleMachine"}:
+            raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
+
+        self.outdir = Path(outdir).resolve().as_posix()
+        workdir = str(Path(workdir).resolve())
+        if not restart:
+            self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
+        else:
+            self.rundir = workdir
+
         if restart:
-            self.rundir = os.path.abspath(workdir)
-            self.restarting = True
             if not os.path.isdir(self.rundir):
                 raise NotADirectoryError(f"DDF restart directory does not exist: {self.rundir}")
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
-        elif use_node_scratch:
-            self.rundir = workdir
-            self.restarting = False
-        else:
-            self.setup_rundir(workdir)
-            self.restarting = False
+            prepared = Path(self.rundir) / "ddf-input.cfg"
+            if prepared.is_file():
+                self.ddfconfig = prepared
         self.setup_apptainer_variables(self.rundir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        self.prepare_dr3_config(lite=lite, restart=restart)
 
         if restart:
             self.run_restart(ddf_container, scheduler, slurm_params)
             return
 
+        self.prepare_run_inputs(self.rundir, source_dir=workdir)
+
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
                 data_dir=os.path.abspath(self.mspath),
-                workdir=os.path.abspath(self.rundir),
-                outdir=os.path.abspath(outdir),
-                configfile=self.ddfconfig,
+                workdir=self.rundir,
+                outdir=self.outdir,
                 job_name=f"DDF-pipeline_L{self.obsid}",
-                cluster=self.cluster,
+                local_scratch=use_node_scratch,
                 **slurm_params,
             )
-            with open("temp_jobscript.sh", "w") as f:
-                f.write(wrapped_cmd)
-            logger.info("Written temporary jobscript to temp_jobscript.sh")
-            out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+            script = Path(self.rundir) / "temp_jobscript.sh"
+            script.write_text(wrapped_cmd)
+            logger.info(f"Written temporary jobscript to {script}")
+            out = subprocess.check_output(["sbatch", script]).decode("utf-8")
             print(out)
+            return
         elif scheduler == "slurm-srun":
             wrapped_cmd = add_slurm_skeleton_ddf(
                 data_dir=os.path.abspath(self.mspath),
-                workdir=os.path.abspath(self.rundir),
-                outdir=os.path.abspath(outdir),
-                configfile=self.ddfconfig,
+                workdir=self.rundir,
+                outdir=self.outdir,
                 job_name=f"DDF-pipeline_L{self.obsid}",
-                cluster=self.cluster,
+                local_scratch=use_node_scratch,
                 **slurm_params,
             )
-            with open("temp_jobscript.sh", "w") as f:
-                f.write(wrapped_cmd)
-            logger.info("Written temporary jobscript to temp_jobscript.sh")
-            out = subprocess.check_output(["sbatch", "temp_jobscript.sh"]).decode("utf-8")
+            script = Path(self.rundir) / "temp_jobscript.sh"
+            script.write_text(wrapped_cmd)
+            logger.info(f"Written temporary jobscript to {script}")
+            out = subprocess.check_output(["sbatch", script]).decode("utf-8")
             print(out)
-        elif scheduler == "singleMachine":
-            cmd = f"apptainer exec {ddf_container} make_mslists.py force"
-            logger.info(f"Running command:\n{cmd}")
-            out = subprocess.check_output(cmd.split(" "), stderr=subprocess.STDOUT)
-            with open("big-mslist.txt", "w") as mslist:
-                for ms in sorted(Path(os.getcwd()).glob("*pre-cal.ms")):
-                    mslist.write(f"{ms.name}\n")
+            return
 
-            cmd = f"apptainer exec {ddf_container} pipeline.py {self.ddfconfig}"
-            logger.info(f"Running command:\n{cmd}")
-            try:
-                out = subprocess.check_output(cmd.split(" "))
-                with open("log_DDF-pipeline.txt", "wb") as f:
-                    f.write(out)
-                self.move_results_from_rundir()
-            except subprocess.CalledProcessError as e:
-                with open("log_DDF-pipeline.txt", "wb") as f:
-                    f.write(e.stdout)
-                if e.stderr:
-                    with open("log_DDF-pipeline_err.txt", "wb") as f:
-                        f.write(e.stderr)
+        root = Path(self.rundir)
+        for ms in self.msfiles:
+            shutil.copytree(ms, root / Path(ms).name)
+
+        ddf = ["apptainer", "exec", "--bind", self.outdir, ddf_container]
+        cmd = [*ddf, "make_mslists.py", "force"]
+        logger.info(f"Running command:\n{shlex.join(cmd)}")
+        subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
+        with open(root / "big-mslist.txt", "w") as mslist:
+            for ms in self.msfiles:
+                mslist.write(f"{Path(ms).name}\n")
+
+        cmd = [*ddf, "pipeline.py", self.ddfconfig]
+        logger.info(f"Running command:\n{shlex.join(cmd)}")
+        log_path = root / "log_DDF-pipeline.txt"
+        try:
+            out = subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
+            with log_path.open("wb") as log_file:
+                log_file.write(out)
+            self.move_results_from_rundir()
+        except subprocess.CalledProcessError as error:
+            with log_path.open("wb") as log_file:
+                log_file.write(error.output or b"")
+            raise
 
     def verify_ddf_container(self) -> str:
-        ddf_container = os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif")
+        ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
         if not os.path.isfile(ddf_container):
             logger.critical("Container `ddf-pipeline.sif` not found in $CWL_SINGULARITY_CACHE")
             raise RuntimeError("No viable ddf-pipeline container was found.")
@@ -211,13 +550,15 @@ class DDFConfig:
     def setup_apptainer_variables(self, workdir):
         try:
             out = subprocess.check_output(["singularity", "--version"]).decode("utf-8").strip()
-        except subprocess.CalledProcessError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             out = subprocess.check_output(["apptainer", "--version"]).decode("utf-8").strip()
         if "apptainer" in out:
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
-                os.environ["APPTAINER_BINDPATH"] = f"{workdir}" + f",{os.environ['APPTAINER_BINDPATH']}"
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.path.dirname(workdir)}" + f",{os.environ['APPTAINER_BINDPATH']}"
+                )
         elif "singularity" in out:
             if "SINGULARITY_BINDPATH" not in os.environ:
                 os.environ["SINGULARITY_BINDPATH"] = f"{os.path.dirname(workdir)}"
@@ -251,7 +592,7 @@ def ddf_pipeline(
     ] = "singleMachine",
     rundir: Annotated[
         str,
-        Parameter(help="Directory to run in."),
+        Parameter(help="Parent directory for a fresh run, or the existing run directory for a restart."),
     ] = os.getcwd(),
     outdir: Annotated[
         str,
@@ -287,43 +628,32 @@ def ddf_pipeline(
             help="[slurm] this will run the pipeline on the node's local $TMPDIR instead of a user-defined rundir."
         ),
     ] = False,
+    lite: Annotated[
+        bool,
+        Parameter(
+            help="Run DDF-lite if possible, starting from a DR3 or DR2 model. "
+            "If not possible will fall back to a full run."
+        ),
+    ] = False,
 ):
     logger.info("Starting ddf-pipeline")
-    args = locals()
     config = DDFConfig(
-        args["mspath"],
-        os.path.abspath(args["config_file"]),
+        mspath,
+        config_file,
         outdir=outdir,
     )
-    unneeded_keys = [
-        "mspath",
-        "scheduler",
-        "rundir",
-        "slurm_queue",
-        "slurm_account",
-        "slurm_time",
-        "slurm_cores",
-        "slurm_memory",
-        "restart",
-        "outdir",
-        "use_node_scratch",
-    ]
-    args_for_linc = args.copy()
-    for key in unneeded_keys:
-        args_for_linc.pop(key)
-    if args["use_node_scratch"]:
-        args["rundir"] = "$TMPDIR"
     config.run_workflow(
-        scheduler=args["scheduler"],
+        scheduler=scheduler,
         slurm_params={
-            "queue": args["slurm_queue"],
-            "account": args["slurm_account"],
-            "time": args["slurm_time"],
-            "cores": args["slurm_cores"],
-            "memory": args["slurm_memory"],
+            "queue": slurm_queue,
+            "account": slurm_account,
+            "time": slurm_time,
+            "cores": slurm_cores,
+            "memory": slurm_memory,
         },
-        workdir=args["rundir"],
-        outdir=args["outdir"],
-        restart=args["restart"],
-        use_node_scratch=args["use_node_scratch"],
+        workdir=rundir,
+        outdir=outdir,
+        restart=restart,
+        use_node_scratch=use_node_scratch,
+        lite=lite,
     )

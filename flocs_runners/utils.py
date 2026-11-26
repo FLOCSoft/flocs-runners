@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+import shlex
 import socket
 import subprocess
 import sys
@@ -269,7 +270,6 @@ EOT
 
 def add_slurm_skeleton_ddf(
     data_dir: str,
-    configfile: str,
     workdir: str = os.getcwd(),
     outdir: str = "",
     time: str = "",
@@ -278,9 +278,9 @@ def add_slurm_skeleton_ddf(
     queue: str = "",
     account: str = "",
     memory: int = 0,
-    cluster: str = "",
     local_scratch: bool = False,
-):
+) -> str:
+    """Stage the input MSes and run DDF with the prepared parset."""
     sbatch_line = "#SBATCH "
     if time:
         sbatch_line += f"-t {time} "
@@ -294,26 +294,72 @@ def add_slurm_skeleton_ddf(
         sbatch_line += f"-A {account} "
     if memory:
         sbatch_line += f"--mem {memory}GB "
+
+    ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
+    outdir = os.path.abspath(outdir or os.curdir)
+
+    setup = ['cd -- "$SUBMIT_DIR"']
     if local_scratch:
-        wrapped = f"""#!/bin/bash
-{sbatch_line}
-export WORKDIR=$(mktemp -d -p $TMPDIR)
-cd $WORKDIR
-for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
-    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
+        setup = [
+            'SCRATCH_DIR=$(mktemp -d "${TMPDIR:?Slurm did not set TMPDIR}/ddf.XXXXXXXX")',
+            'cd -- "$SCRATCH_DIR"',
+            'cp -- "$SUBMIT_DIR/ddf-input.cfg" .',
+            'catalogue="$SUBMIT_DIR/image_dirin_SSD_m.npy.ClusterCat.npy"',
+            'if [[ -f $catalogue ]]; then cp -- "$catalogue" .; fi',
+        ]
+    wrapped = "\n".join([
+        "#!/bin/bash",
+        sbatch_line.rstrip(),
+        "set -eo pipefail",
+        "shopt -s nullglob globstar",
+        f"SUBMIT_DIR={shlex.quote(workdir)}",
+        f"DATA_DIR={shlex.quote(data_dir)}",
+        f"OUTDIR={shlex.quote(outdir)}",
+        f"CONTAINER={shlex.quote(ddf_container)}",
+        *setup,
+        r'''WORKDIR=$(pwd -P)
+printf 'DDF working directory: %s\n' "$WORKDIR"
+inputs=("$DATA_DIR"/L*pre-cal.ms)
+if (( ${#inputs[@]} == 0 )); then
+    printf 'No input MeasurementSets in %s\n' "$DATA_DIR" >&2
+    exit 1
+fi
+ddf=(apptainer exec --bind "$WORKDIR" --bind "$OUTDIR")
+for ms in "${inputs[@]}"; do
+    "${ddf[@]}" --bind "$DATA_DIR" "$CONTAINER" DP3 "msin=$ms" "msout=${ms##*/}" \
+        msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False 'steps=[]'
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
-"""
-    else:
-        wrapped = f"""#!/bin/bash
-{sbatch_line}
-export WORKDIR={workdir}
-cd $WORKDIR
-for f in {os.path.join(data_dir, 'L*pre-cal.ms')}; do
-    apptainer exec {os.path.join(os.environ['CWL_SINGULARITY_CACHE'], 'ddf-pipeline.sif')} DP3 msin=$f msout=$(basename $f) msout.antennacompression=False msout.scalarflags=False msout.uvwcompression=False steps=[]
+staged=(*pre-cal.ms)
+if (( ${#staged[@]} == 0 )); then
+    printf 'No MeasurementSets staged in %s\n' "$WORKDIR" >&2
+    exit 1
+fi
+"${ddf[@]}" "$CONTAINER" make_mslists.py force
+printf '%s\n' "${staged[@]}" | LC_ALL=C sort > big-mslist.txt
+"${ddf[@]}" "$CONTAINER" pipeline.py "$WORKDIR/ddf-input.cfg" > "$SUBMIT_DIR/log_DDF-pipeline.txt" 2>&1
+if [[ ! "$SUBMIT_DIR" -ef "$WORKDIR" ]]; then
+    cp -- "$SUBMIT_DIR/log_DDF-pipeline.txt" "$WORKDIR/"
+fi
+
+# Preserve solution links that point to files inside the moved directory.
+for link in SOLSDIR/**/*.npz; do
+    [[ -L $link ]] || continue
+    target=$(readlink -- "$link")
+    [[ $target == "$WORKDIR/"* ]] || continue
+    if [[ ! -f $link ]]; then
+        printf 'Missing DDF solution: %s -> %s\n' "$link" "$target" >&2
+        exit 1
+    fi
+    relative=$(realpath --relative-to="${link%/*}" -- "$target")
+    ln -sfn -- "$relative" "$link"
 done
-flocs-run ddf-pipeline --outdir {outdir} --config-file {configfile} .
-"""
+
+first_ms=${inputs[0]##*/}
+destination="$OUTDIR/DDF-pipeline_${first_ms%%_*}_$(date -u +%Y_%m_%d-%H_%M_%S)"
+cd /
+mv -T -- "$WORKDIR" "$destination"
+''',
+    ])
     return wrapped
 
 
