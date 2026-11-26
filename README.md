@@ -16,6 +16,8 @@ Some environment setup is required for everything to operate correctly. Please f
 
 `flocs-run ddf-pipeline` enables `--lite` by default. It uses an explicitly configured input model, or tries to obtain a usable LoTSS-DR3 model for the field. If no usable DR3 model is available, it warns and falls back to a full run.
 
+DR3 models are validated without rewriting them. Missing required DDF settings or incompatible image geometry cause a warning and a full-run fallback.
+
 Use `--no-lite` to request a full run without looking up a DR3 model or issuing a fallback warning. This option conflicts with a configured `[inputmodel] basedicomodel`; remove that setting or use `--lite`.
 
 Restarts reuse their saved configuration without fetching a new model or changing mode. `--no-lite` also rejects a saved configuration containing an input model.

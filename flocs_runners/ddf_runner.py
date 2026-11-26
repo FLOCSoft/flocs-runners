@@ -215,43 +215,30 @@ class DDFConfig:
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
     @staticmethod
-    def ensure_compatible_dr3_model(model_path: Path, output_path: Path) -> dict[str, Any]:
-        """Validate a DR3 DicoModel file and add missing defaults expected by DDF."""
+    def validate_dr3_model(model_path: Path) -> dict[str, Any]:
+        """Check a DR3 DicoModel without modifying it; raise if incompatible."""
         with open(model_path, "rb") as stream:
             model = pickle.load(stream, encoding="latin-1")
         if not model.get("GD") or "ModelShape" not in model or not len(model.get("Comp", {})):
             raise ValueError("Invalid DicoModel")
-        added = []
-        for section, values in {
-            "Weight": {
-                "EnableSigmoidTaper": 0,
-                "SigmoidTaperInnerCutoff": 0,
-                "SigmoidTaperOuterCutoff": 0,
-                "SigmoidTaperInnerRolloffStrength": 0.5,
-                "SigmoidTaperOuterRolloffStrength": 0.5,
-            },
-            "Data": {"Dask": False},
-        }.items():
-            for key, value in values.items():
-                if key not in model["GD"].setdefault(section, {}):
-                    model["GD"][section][key] = value
-                    added.append(section + "." + key)
-        information = {
-            "added_defaults": added,
+        missing = [
+            f"{section}.{key}"
+            for section, keys in {
+                "Weight": (
+                    "EnableSigmoidTaper", "SigmoidTaperInnerCutoff", "SigmoidTaperOuterCutoff",
+                    "SigmoidTaperInnerRolloffStrength", "SigmoidTaperOuterRolloffStrength",
+                ),
+                "Data": ("Dask",),
+            }.items()
+            for key in keys
+            if key not in model["GD"].get(section, {})
+        ]
+        if missing:
+            raise ValueError(f"DR3 model is missing required DDF settings: {', '.join(missing)}")
+        return {
             "npix": int(model["GD"]["Image"]["NPix"]),
             "cell": float(model["GD"]["Image"]["Cell"]),
         }
-        staged = None
-        try:
-            with tempfile.NamedTemporaryFile(dir=output_path.parent, delete=False) as stream:
-                staged = Path(stream.name)
-                # Match the pickle protocol used by the DDF container's Python 3.9.
-                pickle.dump(model, stream, protocol=4)
-            staged.replace(output_path)
-        finally:
-            if staged is not None:
-                staged.unlink(missing_ok=True)
-        return information
 
     def prepare_dr3_config(self, lite: bool = True, restart: bool = False):
         """Choose lite/full for a fresh run, or validate the saved mode on restart."""
@@ -280,14 +267,13 @@ class DDFConfig:
 
         if products:
             model = products["model"]
-            compatible = model.with_name(model.stem + ".compatible.DicoModel")
             try:
-                information = self.ensure_compatible_dr3_model(model, compatible)
+                information = self.validate_dr3_model(model)
             except Exception as error:
-                # Model decoding and serialization can raise library-specific errors.
-                reason = f"Could not prepare DR3 model {model}: {error}"
+                # Model decoding can raise library-specific errors.
+                reason = f"Could not validate DR3 model {model}: {error}"
             else:
-                logger.info("Prepared DR3 model", **information)
+                logger.info("Validated DR3 model", **information)
                 if (config.getint("image", "imsize", fallback=20000) != information["npix"]
                         or not np.isclose(config.getfloat("image", "cellsize", fallback=1.5), information["cell"])):
                     reason = "Requested image size/pixel scale differs from the DR3 model"
@@ -296,7 +282,7 @@ class DDFConfig:
                 else:
                     if not config.has_section("inputmodel"):
                         config.add_section("inputmodel")
-                    config.set("inputmodel", "basedicomodel", str(compatible.with_suffix("")))
+                    config.set("inputmodel", "basedicomodel", str(model.with_suffix("")))
                     config.set("inputmodel", "basemaskname", str(products["mask"]))
                     config.set("inputmodel", "baseimagename", str(products["image"])[:-len(".app.restored.fits")])
                     if not config.has_section("image"):
