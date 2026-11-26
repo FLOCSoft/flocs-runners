@@ -8,6 +8,7 @@ import configparser
 import hashlib
 import json
 from http.client import HTTPException
+from importlib import import_module
 import os
 import pickle
 import shlex
@@ -70,7 +71,7 @@ class DDFConfig:
         return f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
 
     def _fetch_dr3_archive(self, entry: dict[str, Any], cache: Path) -> Path:
-        """Return a verified local copy of a LoTSS-DR3 archive.
+        """Return a verified local copy of a LoTSS archive.
 
         Reuse a cached file if its size and checksum match the repository metadata.
         Otherwise, fetch it from SURF and apply the same checks before caching it.
@@ -80,7 +81,7 @@ class DDFConfig:
         if archive.is_file():
             if archive.stat().st_size == entry["size"] and self._file_digest(archive, algorithm) == expected:
                 return archive
-            logger.warning(f"Removing invalid cached DR3 archive: {archive}")
+            logger.warning(f"Removing invalid cached LoTSS archive: {archive}")
             archive.unlink()
         temporary = None
         try:
@@ -112,7 +113,7 @@ class DDFConfig:
                 temporary.unlink(missing_ok=True)
 
     def fetch_dr3_model(self):
-        """Fetch complete native model paths for the exact MS field; raise if unavailable.
+        """Fetch native DR3 or DR2 model paths for the exact MS field; prefer DR3.
 
         Existing tape archives are recalled and waited for. An absent field, failed
         download or incomplete product set leaves full mode selected.
@@ -125,20 +126,24 @@ class DDFConfig:
                     target = observation.getcell("LOFAR_TARGET", row)
                     names.update(str(value).strip() for value in np.asarray(target).ravel())
         if len(names) != 1:
-            raise ValueError(f"DR3 reuse requires one exact field name; found {sorted(names)}")
+            raise ValueError(f"LoTSS reuse requires one exact field name; found {sorted(names)}")
         field = names.pop()
         query = urlencode({"q": f'"{field}"', "size": 100})
         with urlopen("https://repository.surf.nl/api/records?" + query, timeout=30) as response:
             hits = json.load(response)["hits"]["hits"]
-        matches = [record for record in hits
-                   if record.get("custom_fields", {}).get("collection:metadata", {}).get("id") == field
-                   and record["custom_fields"]["collection:metadata"].get("$schema")
-                   == "https://repository.surf.nl/schema/lotss-dr3"]
+        for release, field_key in (("dr3", "id"), ("dr2", "mosaic_id")):
+            schema = f"https://repository.surf.nl/schema/lotss-{release}"
+            matches = [record for record in hits
+                       if record.get("custom_fields", {}).get("collection:metadata", {}).get(field_key) == field
+                       and record["custom_fields"]["collection:metadata"].get("$schema") == schema]
+            if matches:
+                break
         if len(matches) != 1:
-            raise ValueError(f"Expected one exact SURF DR3 record for {field}; found {len(matches)}")
+            raise ValueError(f"Expected one exact SURF LoTSS record for {field}; found {len(matches)}")
         with urlopen("https://repository.surf.nl/api/records/" + matches[0]["id"], timeout=30) as response:
             record = json.load(response)
-        if record.get("custom_fields", {}).get("collection:metadata", {}).get("id") != field:
+        metadata = record.get("custom_fields", {}).get("collection:metadata", {})
+        if metadata.get(field_key) != field or metadata.get("$schema") != schema:
             raise ValueError("SURF record field differs from the requested MS field")
         # Never use an archive-provided path for extraction or a different/nearest field.
         cache = Path(self.outdir).resolve() / ".dr3-models" / record["id"]
@@ -147,11 +152,16 @@ class DDFConfig:
         required = [stem + ".DicoModel", stem + ".mask01.fits", stem + ".app.restored.fits",
                     "image_dirin_SSD_m.npy.ClusterCat.npy"]
         entries = record.get("files", {}).get("entries", {})
-        missing = {"images.tar", "uv_misc.tar"} - entries.keys()
+        missing = {"images.tar"} - entries.keys()
         if missing:
-            raise ValueError(f"Missing DR3 archives for {field}: {sorted(missing)}; full DDF is required")
+            raise ValueError(f"Missing LoTSS archives for {field}: {sorted(missing)}; full DDF is required")
         # Start both recalls before waiting on either missing archive.
-        for name in ("images.tar", "uv_misc.tar"):
+        auxiliary = "uv_misc.tar" if "uv_misc.tar" in entries else "uv.tar"
+        if auxiliary not in entries:
+            auxiliary = "misc.tar"
+        for name in ("images.tar", auxiliary):
+            if name not in entries:
+                continue
             if (cache / name).is_file():
                 continue
             try:
@@ -159,12 +169,12 @@ class DDFConfig:
                 with urlopen(request, timeout=60):
                     pass
             except (OSError, URLError, HTTPException) as error:
-                logger.warning(f"DR3 recall request for {name} failed; will retry at download: {error}")
+                logger.warning(f"LoTSS recall request for {name} failed; will retry at download: {error}")
         extracted = set()
-        for name in ("images.tar", "uv_misc.tar", "misc.tar"):
+        for name in ("images.tar", "uv_misc.tar", "misc.tar", "uv.tar"):
             if name not in entries:
                 continue
-            logger.info(f"Fetching DR3 {name} for exact field {field}")
+            logger.info(f"Fetching LoTSS-{release.upper()} {name} for exact field {field}")
             try:
                 archive = self._fetch_dr3_archive(entries[name], cache)
                 with tarfile.open(archive, "r:") as bundle:
@@ -190,26 +200,26 @@ class DDFConfig:
                             if staged is not None:
                                 staged.unlink(missing_ok=True)
             except (OSError, URLError, HTTPException, ValueError, tarfile.TarError) as error:
-                logger.warning(f"DR3 {name} unavailable for {field}: {error}")
+                logger.warning(f"LoTSS-{release.upper()} {name} unavailable for {field}: {error}")
             if set(required) <= extracted:
                 break
         if not set(required) <= extracted:
-            raise ValueError(f"Incomplete DR3 products for {field}: missing {sorted(set(required) - extracted)}")
+            raise ValueError(f"Incomplete LoTSS products for {field}: missing {sorted(set(required) - extracted)}")
 
         with fits.open(cache / required[2], memmap=True) as image, fits.open(cache / required[1], memmap=True) as mask:
             header = image[0].header
             for key in ("NAXIS1", "NAXIS2", "CRVAL1", "CRVAL2", "CRPIX1", "CRPIX2", "CDELT1", "CDELT2"):
                 if not np.isclose(header[key], mask[0].header[key], rtol=0, atol=1e-9):
-                    raise ValueError(f"DR3 image/mask geometry differs: {key}")
+                    raise ValueError(f"LoTSS image/mask geometry differs: {key}")
             with table(self.msfiles[0] + "::FIELD", readonly=True, ack=False) as msfield:
                 ra, dec = np.degrees(np.asarray(msfield.getcell("PHASE_DIR", 0)).reshape(-1, 2)[0])
             from astropy.coordinates import SkyCoord
             centre = SkyCoord(header["CRVAL1"], header["CRVAL2"], unit="deg")
             if SkyCoord(ra, dec, unit="deg").separation(centre).arcsec > 1:
-                raise ValueError("DR3 model phase centre differs from the input MS")
+                raise ValueError("LoTSS model phase centre differs from the input MS")
         clusters = np.load(cache / required[3], allow_pickle=False)
         if not len(clusters) or not clusters.dtype.names or not {"ra", "dec"} <= set(clusters.dtype.names):
-            raise ValueError("Invalid DR3 cluster catalogue")
+            raise ValueError("Invalid LoTSS cluster catalogue")
         return {"field": field, "cache": cache, "model": cache / required[0],
                 "image": cache / required[2], "mask": cache / required[1], "clusters": cache / required[3]}
 
@@ -243,11 +253,27 @@ class DDFConfig:
             return information
 
         # Replace the extracted cache file only after a complete write; keep the archive intact.
+        # NumPy 2 moved these globals; DDF containers with NumPy 1 need their old names.
+        class NumpyModule:
+            def __init__(self, name):
+                self.name = name
+
+            def __reduce__(self):
+                return import_module, (self.name,)
+
+        class CompatiblePickler(pickle.Pickler):
+            def reducer_override(self, obj):
+                module = getattr(obj, "__module__", "") or ""
+                if module.startswith("numpy._core.") and hasattr(obj, "__name__"):
+                    legacy = module.replace("numpy._core.", "numpy.core.", 1)
+                    return getattr, (NumpyModule(legacy), obj.__name__)
+                return NotImplemented
+
         staged = None
         try:
             with tempfile.NamedTemporaryFile(dir=model_path.parent, delete=False) as stream:
                 staged = Path(stream.name)
-                pickle.dump(model, stream, protocol=4)
+                CompatiblePickler(stream, protocol=4).dump(model)
             staged.replace(model_path)
         finally:
             if staged is not None:
@@ -255,7 +281,7 @@ class DDFConfig:
         return information
 
     def prepare_dr3_config(self, lite: bool = False, restart: bool = False):
-        """Try DR3 reuse when requested; otherwise keep the supplied configuration."""
+        """Try LoTSS reuse when requested; otherwise keep the supplied configuration."""
         if not lite or restart:
             return
         original = Path(self.ddfconfig)
@@ -266,7 +292,7 @@ class DDFConfig:
         if config.get("inputmodel", "basedicomodel", fallback="").strip().lower() not in ("", "none"):
             logger.info("Using the explicitly configured input sky model")
             return
-        mode, reason = "full", "No complete usable exact-field DR3 model"
+        mode, reason = "full", "No complete usable exact-field LoTSS model"
         products = None
         try:
             products = self.fetch_dr3_model()
@@ -296,10 +322,10 @@ class DDFConfig:
                     if not config.has_section("image"):
                         config.add_section("image")
                     config.set("image", "clusterfile", str(products["clusters"]))
-                    mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
+                    mode, reason = "lite", f"Complete validated SURF LoTSS model for {products['field']}"
 
         if mode == "full":
-            logger.warning(f"DR3 model reuse unavailable; selecting full DDF run: {reason}")
+            logger.warning(f"LoTSS model reuse unavailable; selecting full DDF run: {reason}")
             return
         Path(self.outdir).mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix=f"DDF-inputs_L{self.obsid}.", dir=os.path.abspath(self.outdir)))
@@ -610,7 +636,8 @@ def ddf_pipeline(
     lite: Annotated[
         bool,
         Parameter(
-            help="Run DDF-lite if possible, starting from a DR3 model. If not possible will fall back to a full run."
+            help="Run DDF-lite if possible, starting from a DR3 or DR2 model. "
+            "If not possible will fall back to a full run."
         ),
     ] = False,
 ):
