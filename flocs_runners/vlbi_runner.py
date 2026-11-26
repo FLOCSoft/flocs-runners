@@ -654,7 +654,7 @@ def delay_calibration(
         args_for_linc.pop(key)
     for key, val in args_for_linc.items():
         config.add_entry(key, val)
-    if (not args["model_image"]) and args["use_vlass"]:
+    if (not os.path.isfile(args["model_image"])) and args["use_vlass"]:
         # PILOT supports downloading this automatically, but we can't allow that here
         # as we need to download beforehand.
         if not os.path.isfile(args["delay_calibrator"]["path"]):
@@ -708,6 +708,9 @@ def delay_calibration(
                 }
                 for img in model_images
             ]
+    else:
+        logger.info(f"Using provided model image {args['model_image']}")
+
     config.save(f"mslist_{config.obsid}_VLBI_delay-calibration.json")
     if args["record_toil_stats"] and args["runner"] != "toil":
         logger.critical("--record-toil-stats needs '--runner toil'.")
