@@ -442,7 +442,7 @@ class DDFConfig:
         self,
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        outdir: Optional[str] = None,
+        outdir: str = os.getcwd(),
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
@@ -451,8 +451,7 @@ class DDFConfig:
         if scheduler not in {"slurm", "slurm-srun", "singleMachine"}:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
-        if outdir is not None:
-            self.outdir = Path(outdir).resolve().as_posix()
+        self.outdir = Path(outdir).resolve().as_posix()
         workdir = str(Path(workdir).resolve())
         if not restart:
             self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
