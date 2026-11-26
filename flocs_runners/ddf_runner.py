@@ -47,15 +47,14 @@ class DDFConfig:
 
         filedir = os.path.join(os.path.abspath(mspath), "*pre-cal.ms")
         logger.info(f"Searching {filedir}")
-        files = sorted(glob.glob(filedir))
-        self.msfiles = files
-        logger.info(f"Found {len(files)} files")
-        if not len(files):
+        self.msfiles = sorted(glob.glob(filedir))
+        logger.info(f"Found {len(self.msfiles)} files")
+        if not len(self.msfiles):
             logger.critical("No input MSes found")
             sys.exit(-1)
 
         try:
-            self.obsid = extract_obsid_from_ms(files[0])
+            self.obsid = extract_obsid_from_ms(self.msfiles[0])
         except IndexError:
             self.obsid = "unknown"
 
@@ -255,30 +254,24 @@ class DDFConfig:
                 staged.unlink(missing_ok=True)
         return information
 
-    def prepare_dr3_config(self, lite: bool = True, restart: bool = False):
-        """Choose lite/full for a fresh run, or validate the saved mode on restart."""
+    def prepare_dr3_config(self, lite: bool = False, restart: bool = False):
+        """Try DR3 reuse when requested; otherwise keep the supplied configuration."""
+        if not lite or restart:
+            return
         original = Path(self.ddfconfig)
         config = configparser.ConfigParser(interpolation=None)
         config.optionxform = str
         with original.open() as stream:
             config.read_file(stream)
         if config.get("inputmodel", "basedicomodel", fallback="").strip().lower() not in ("", "none"):
-            if not lite:
-                raise ValueError(
-                    "--no-lite conflicts with [inputmodel] basedicomodel; remove the input model or use --lite."
-                )
             logger.info("Using the explicitly configured input sky model")
             return
-        if restart:
-            return
-        mode, reason = "full", "Full DDF run requested (--no-lite)"
+        mode, reason = "full", "No complete usable exact-field DR3 model"
         products = None
-        if lite:
-            reason = "No complete usable exact-field DR3 model"
-            try:
-                products = self.fetch_dr3_model()
-            except (OSError, HTTPException, EOFError, ValueError, KeyError) as error:
-                reason = str(error)
+        try:
+            products = self.fetch_dr3_model()
+        except (OSError, HTTPException, EOFError, ValueError, KeyError) as error:
+            reason = str(error)
 
         if products:
             model = products["model"]
@@ -305,16 +298,9 @@ class DDFConfig:
                     config.set("image", "clusterfile", str(products["clusters"]))
                     mode, reason = "lite", f"Complete validated SURF DR3 model for {products['field']}"
 
-        if lite and mode == "full":
+        if mode == "full":
             logger.warning(f"DR3 model reuse unavailable; selecting full DDF run: {reason}")
-        if not config.has_section("data"):
-            config.add_section("data")
-        config.set("data", "colname", "DATA")
-        for section, options in {"control": ("bootstrap", "polcubes", "stokesv"), "spectra": ("do_dynspec",)}.items():
-            if not config.has_section(section):
-                config.add_section(section)
-            for option in options:
-                config.set(section, option, "False")
+            return
         Path(self.outdir).mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix=f"DDF-inputs_L{self.obsid}.", dir=os.path.abspath(self.outdir)))
         generated = directory / "ddf-input.cfg"
@@ -446,7 +432,7 @@ class DDFConfig:
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
-        lite: bool = True,
+        lite: bool = False,
     ):
         if scheduler not in {"slurm", "slurm-srun", "singleMachine"}:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
@@ -624,10 +610,9 @@ def ddf_pipeline(
     lite: Annotated[
         bool,
         Parameter(
-            help="Try DDF-lite by default, falling back to full if no usable DR3 model is available. "
-            "Use --no-lite for a full run. Restarts reuse the saved configuration."
+            help="Run DDF-lite if possible, starting from a DR3 model. If not possible will fall back to a full run."
         ),
-    ] = True,
+    ] = False,
 ):
     logger.info("Starting ddf-pipeline")
     config = DDFConfig(
