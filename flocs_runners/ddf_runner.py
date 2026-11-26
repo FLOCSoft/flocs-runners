@@ -96,21 +96,15 @@ class DDFConfig:
             with response:
                 if response.status != 200:
                     raise ValueError(f"Unexpected SURF download status: {response.status}")
-                digest = 1 if algorithm == "adler32" else hashlib.new(algorithm)
                 size = 0
                 with tempfile.NamedTemporaryFile(dir=cache, suffix=".part", delete=False) as stream:
                     temporary = Path(stream.name)
                     for block in iter(lambda: response.read(8 * 1024 * 1024), b""):
                         stream.write(block)
-                        if algorithm == "adler32":
-                            digest = zlib.adler32(block, digest)
-                        else:
-                            digest.update(block)
                         size += len(block)
                         if size > entry["size"]:
                             raise ValueError(f"SURF download exceeds its published size: {entry['key']}")
-                actual = f"{digest:08x}" if algorithm == "adler32" else digest.hexdigest()
-                if size != entry["size"] or actual != expected:
+                if size != entry["size"] or self._file_digest(temporary, algorithm) != expected:
                     raise ValueError(f"Downloaded DR3 archive failed its size/checksum: {entry['key']}")
             os.replace(temporary, archive)
             return archive
@@ -354,7 +348,7 @@ class DDFConfig:
         self.ddfconfig = str(generated)
 
     @staticmethod
-    def prepare_solution_links(workdir):
+    def make_symlinks_relative(workdir):
         """Make internal solution links relative before moving the run directory."""
         root = Path(workdir).resolve()
         for link in (root / "SOLSDIR").rglob("*.npz"):
@@ -367,7 +361,7 @@ class DDFConfig:
                     link.symlink_to(os.path.relpath(target, link.parent))
 
     def move_results_from_rundir(self):
-        self.prepare_solution_links(self.rundir)
+        self.make_symlinks_relative(self.rundir)
         outpath = self.get_results_path()
         logger.info(f"Moving results from {self.rundir} to: {outpath}")
         shutil.move(self.rundir, outpath)
@@ -399,7 +393,7 @@ class DDFConfig:
                 "#!/bin/bash",
                 *directives,
                 f"cd {shlex.quote(self.rundir)} || exit $?",
-                f"{shlex.join(command)} > {shlex.quote(log_path)} 2>&1",
+                f"{shlex.join(map(os.fspath, command))} > {shlex.quote(log_path)} 2>&1",
                 "status=$?",
                 "if [ \"$status\" -eq 0 ]; then",
                 "    cd / || exit $?",
@@ -424,16 +418,16 @@ class DDFConfig:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
         log_path = os.path.join(self.rundir, "log_DDF-pipeline.txt")
-        logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(command)}")
+        logger.info(f"Restarting DDF-pipeline in {self.rundir} with command:\n{shlex.join(map(os.fspath, command))}")
         try:
             out = subprocess.check_output(command, cwd=self.rundir, stderr=subprocess.STDOUT)
+            with open(log_path, "wb") as log_file:
+                log_file.write(out)
+            self.move_results_from_rundir()
         except subprocess.CalledProcessError as error:
             with open(log_path, "wb") as log_file:
                 log_file.write(error.output or b"")
             raise
-        with open(log_path, "wb") as log_file:
-            log_file.write(out)
-        self.move_results_from_rundir()
 
     def run_workflow(
         self,
@@ -444,13 +438,12 @@ class DDFConfig:
         restart: bool = False,
         use_node_scratch: bool = False,
     ):
-        batch = scheduler in {"slurm", "slurm-srun"}
-        if not batch and scheduler != "singleMachine":
+        if scheduler not in {"slurm", "slurm-srun", "singleMachine"}:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
         workdir = str(Path(workdir).resolve())
         if not restart:
-            if batch:
+            if scheduler in {"slurm", "slurm-srun"}:
                 self.outdir = Path(outdir).resolve().as_posix()
             self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
         else:
@@ -462,8 +455,8 @@ class DDFConfig:
             logger.info(f"Attempting to restart existing run from {self.rundir}.")
             prepared = Path(self.rundir) / "ddf-input.cfg"
             if prepared.is_file():
-                self.ddfconfig = str(prepared)
-        self.setup_apptainer_variables(self.rundir if batch else workdir)
+                self.ddfconfig = prepared
+        self.setup_apptainer_variables(self.rundir if scheduler in {"slurm", "slurm-srun"} else workdir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
 
@@ -472,10 +465,10 @@ class DDFConfig:
             return
 
         self.prepare_dr3_config()
-        self.prepare_run_inputs(self.rundir, source_dir=None if batch else workdir)
+        self.prepare_run_inputs(self.rundir, source_dir=None if scheduler in {"slurm", "slurm-srun"} else workdir)
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
 
-        if batch:
-            Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
                 data_dir=os.path.abspath(self.mspath),
                 workdir=self.rundir,
@@ -487,7 +480,22 @@ class DDFConfig:
             script = Path(self.rundir) / "temp_jobscript.sh"
             script.write_text(wrapped_cmd)
             logger.info(f"Written temporary jobscript to {script}")
-            out = subprocess.check_output(["sbatch", str(script)]).decode("utf-8")
+            out = subprocess.check_output(["sbatch", script]).decode("utf-8")
+            print(out)
+            return
+        elif scheduler == "slurm-srun":
+            wrapped_cmd = add_slurm_skeleton_ddf(
+                data_dir=os.path.abspath(self.mspath),
+                workdir=self.rundir,
+                outdir=self.outdir,
+                job_name=f"DDF-pipeline_L{self.obsid}",
+                local_scratch=use_node_scratch,
+                **slurm_params,
+            )
+            script = Path(self.rundir) / "temp_jobscript.sh"
+            script.write_text(wrapped_cmd)
+            logger.info(f"Written temporary jobscript to {script}")
+            out = subprocess.check_output(["sbatch", script]).decode("utf-8")
             print(out)
             return
 
@@ -495,7 +503,6 @@ class DDFConfig:
         for ms in self.msfiles:
             shutil.copytree(ms, root / Path(ms).name)
 
-        Path(self.outdir).mkdir(parents=True, exist_ok=True)
         ddf = ["apptainer", "exec", "--bind", self.outdir, ddf_container]
         cmd = [*ddf, "make_mslists.py", "force"]
         logger.info(f"Running command:\n{shlex.join(cmd)}")
@@ -509,13 +516,13 @@ class DDFConfig:
         log_path = root / "log_DDF-pipeline.txt"
         try:
             out = subprocess.check_output(cmd, cwd=self.rundir, stderr=subprocess.STDOUT)
+            with log_path.open("wb") as log_file:
+                log_file.write(out)
+            self.move_results_from_rundir()
         except subprocess.CalledProcessError as error:
             with log_path.open("wb") as log_file:
                 log_file.write(error.output or b"")
             raise
-        with log_path.open("wb") as log_file:
-            log_file.write(out)
-        self.move_results_from_rundir()
 
     def verify_ddf_container(self) -> str:
         ddf_container = os.path.abspath(os.path.join(os.environ["CWL_SINGULARITY_CACHE"], "ddf-pipeline.sif"))
