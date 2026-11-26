@@ -433,7 +433,7 @@ class DDFConfig:
         self,
         scheduler: str = "slurm",
         workdir: str = os.getcwd(),
-        outdir: str = os.getcwd(),
+        outdir: Optional[str] = None,
         slurm_params: dict = {},
         restart: bool = False,
         use_node_scratch: bool = False,
@@ -441,10 +441,10 @@ class DDFConfig:
         if scheduler not in {"slurm", "slurm-srun", "singleMachine"}:
             raise ValueError(f"Unsupported scheduler `{scheduler}` provided.")
 
+        if outdir is not None:
+            self.outdir = Path(outdir).resolve().as_posix()
         workdir = str(Path(workdir).resolve())
         if not restart:
-            if scheduler in {"slurm", "slurm-srun"}:
-                self.outdir = Path(outdir).resolve().as_posix()
             self.rundir = tempfile.mkdtemp(prefix=f"tmp.DDF-pipeline_L{self.obsid}.", dir=workdir)
         else:
             self.rundir = workdir
@@ -456,17 +456,17 @@ class DDFConfig:
             prepared = Path(self.rundir) / "ddf-input.cfg"
             if prepared.is_file():
                 self.ddfconfig = prepared
-        self.setup_apptainer_variables(self.rundir if scheduler in {"slurm", "slurm-srun"} else workdir)
+        self.setup_apptainer_variables(self.rundir)
         ddf_container = self.verify_ddf_container()
         logger.info(f"Running DDF-pipeline under {scheduler} in {self.rundir}")
+        Path(self.outdir).mkdir(parents=True, exist_ok=True)
 
         if restart:
             self.run_restart(ddf_container, scheduler, slurm_params)
             return
 
         self.prepare_dr3_config()
-        self.prepare_run_inputs(self.rundir, source_dir=None if scheduler in {"slurm", "slurm-srun"} else workdir)
-        Path(self.outdir).mkdir(parents=True, exist_ok=True)
+        self.prepare_run_inputs(self.rundir, source_dir=workdir)
 
         if scheduler == "slurm":
             wrapped_cmd = add_slurm_skeleton_ddf(
@@ -540,7 +540,9 @@ class DDFConfig:
             if "APPTAINER_BINDPATH" not in os.environ:
                 os.environ["APPTAINER_BINDPATH"] = f"{os.path.dirname(workdir)}"
             else:
-                os.environ["APPTAINER_BINDPATH"] = f"{workdir}" + f",{os.environ['APPTAINER_BINDPATH']}"
+                os.environ["APPTAINER_BINDPATH"] = (
+                    f"{os.path.dirname(workdir)}" + f",{os.environ['APPTAINER_BINDPATH']}"
+                )
         elif "singularity" in out:
             if "SINGULARITY_BINDPATH" not in os.environ:
                 os.environ["SINGULARITY_BINDPATH"] = f"{os.path.dirname(workdir)}"
